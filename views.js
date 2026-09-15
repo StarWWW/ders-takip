@@ -139,6 +139,7 @@ function viewToday() {
   const sim = projection(state.sim);
 
   return `
+  ${installBannerHtml()}
   <div class="hello">
     <h2>${greeting(n.getHours())}, ${esc(STUDENT.firstName)}</h2>
     <p>${fmtDate(n, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · ${si.before ? `Dönem ${fmtDate(semesterStart(), { day: 'numeric', month: 'long' })} tarihinde başlıyor` : si.after ? 'Dönem sona erdi' : d <= 4 ? `Bugün ${hoursToday} saat dersin var` : 'Hafta sonu, iyi dinlen'}</p>
@@ -667,6 +668,50 @@ function viewAcademic() {
   </div>`;
 }
 
+/* ============ Uygulama olarak yükleme ============ */
+const UI_STORE = 'dersTakip.ui';
+const uiPrefs = () => { try { return JSON.parse(localStorage.getItem(UI_STORE) || '{}') || {}; } catch (e) { return {}; } };
+const setUiPref = (k, v) => { try { localStorage.setItem(UI_STORE, JSON.stringify({ ...uiPrefs(), [k]: v })); } catch (e) { /* yok say */ } };
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+function installBannerHtml() {
+  if (isStandalone() || uiPrefs().installDismissed || !matchMedia('(max-width: 760px)').matches) return '';
+  if (!window.installPrompt && !isIOS()) return '';
+  return `<div class="install-banner" role="region" aria-label="Uygulama olarak yükle">
+    <img src="icons/icon-192.png" alt="" width="40" height="40">
+    <div class="ib-text"><b>Ana ekrana ekle</b><span>Tek dokunuşla açılır, internetsiz de çalışır.</span></div>
+    ${window.installPrompt
+      ? `<button type="button" class="btn btn-primary btn-sm" data-act="install">Ekle</button>`
+      : `<a class="btn btn-primary btn-sm" href="#ayarlar">Nasıl?</a>`}
+    <button type="button" class="icon-btn ib-close" data-act="installDismiss" aria-label="Öneriyi kapat">${icon('x')}</button>
+  </div>`;
+}
+
+function installCardHtml() {
+  const head = (badge) => `<div class="card-h"><h3 class="card-t">${icon('phone')}Uygulama olarak kullan</h3>${badge}</div>`;
+  if (isStandalone()) {
+    return `<section class="card card-pad">${head(`<span class="badge b-ok">${icon('check')}Yüklü</span>`)}
+      <p class="help" style="margin:0">Uygulama olarak çalışıyor. İnternet yokken de açılır; yaptığın işaretlemeler bağlantı gelince eşitlenir.</p></section>`;
+  }
+  let body;
+  if (window.installPrompt) {
+    body = `<p class="help" style="margin:0 0 12px">Ana ekranına simge olarak eklenir, tam ekran açılır ve internetsiz de çalışır.</p>
+      <button type="button" class="btn btn-primary" data-act="install">${icon('plusSquare')}Ana ekrana ekle</button>`;
+  } else if (isIOS()) {
+    body = `<p class="help" style="margin:0 0 10px">iPhone ve iPad'de <b>Safari</b> ile:</p>
+      <ol class="steps">
+        <li>Alttaki <b>Paylaş</b> düğmesine dokun ${icon('share')}</li>
+        <li>Listeden <b>Ana Ekrana Ekle</b>'yi seç ${icon('plusSquare')}</li>
+        <li>Sağ üstten <b>Ekle</b>'ye dokun</li>
+      </ol>
+      <p class="help" style="margin:10px 0 0">Ana ekrandaki simgeden açınca şifreni bir kez girip "Bu cihazda açık kalsın"ı işaretle.</p>`;
+  } else {
+    body = `<p class="help" style="margin:0">Android'de Chrome menüsünden (⋮) <b>Ana ekrana ekle</b> ya da <b>Uygulamayı yükle</b>'yi seç. Bilgisayarda Chrome/Edge adres çubuğundaki yükle simgesini kullanabilirsin.</p>`;
+  }
+  return `<section class="card card-pad">${head('')}${body}</section>`;
+}
+
 /* ============ AYARLAR ============ */
 const SYNC_STATUS = {
   yok: ['b-neutral', 'Yapılandırılmamış'],
@@ -676,6 +721,7 @@ const SYNC_STATUS = {
   bekliyor: ['b-info', 'Gönderilecek…'],
   acik: ['b-ok', 'Eşitlendi'],
   kurulum: ['b-warn', 'Kurulum gerekli'],
+  cevrimdisi: ['b-neutral', 'Çevrimdışı'],
   hata: ['b-danger', 'Hata'],
 };
 function agoText(t) {
@@ -727,6 +773,7 @@ function viewSettings() {
   return `
   ${syncCard ? `<div style="margin-bottom:16px">${syncCard}</div>` : ''}
   <div class="set-grid">
+    ${installCardHtml()}
     <section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('calendar')}Dönem</h3></div>
       <div class="grid" style="grid-template-columns:1fr 1fr">

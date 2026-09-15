@@ -99,6 +99,8 @@ function applyTheme() {
   if (t === 'system') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', t);
   const dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  // Uygulama kipinde durum çubuğu rengi seçili temaya uysun
+  $$('meta[name="theme-color"]').forEach((m) => { m.removeAttribute('media'); m.setAttribute('content', dark ? '#0b0f15' : '#f5f6f8'); });
   $('#themeBtn').innerHTML = icon(dark ? 'sun' : 'moon');
   $('#themeBtn').setAttribute('aria-label', dark ? 'Açık temaya geç' : 'Koyu temaya geç');
 }
@@ -172,6 +174,18 @@ document.addEventListener('click', (e) => {
     case 'print': window.print(); break;
     case 'lock': if (window.lockApp) window.lockApp(); break;
     case 'syncNow': Sync.run(); break;
+    case 'install': {
+      const p = window.installPrompt;
+      if (!p) { location.hash = 'ayarlar'; break; }
+      p.prompt();
+      p.userChoice.then((c) => {
+        window.installPrompt = null;
+        if (c.outcome === 'accepted') toast('Ana ekrana ekleniyor');
+        render();
+      });
+      break;
+    }
+    case 'installDismiss': setUiPref('installDismissed', true); render(); break;
     case 'syncForget':
       if (confirm('Bu cihaz artık eşitlenmeyecek (diğer cihazlar etkilenmez). Devam edilsin mi?')) { Sync.forgetDevice(); render(); toast('Bu cihazda eşitleme kapatıldı'); }
       break;
@@ -369,12 +383,18 @@ setInterval(() => {
   if (!busy && !openCode && (currentRoute === 'bugun' || currentRoute === 'program')) render();
 }, 30000);
 
+/* ============ Uygulama kurulumu ve bağlantı ============ */
+window.addEventListener('kurulabilir', () => { if (currentRoute === 'bugun' || currentRoute === 'ayarlar') render(); });
+window.addEventListener('appinstalled', () => { window.installPrompt = null; toast('Ders Takip ana ekrana eklendi'); render(); });
+window.addEventListener('offline', () => toast('İnternet yok — kayıtların bu cihazda saklanıyor, bağlantı gelince eşitlenecek'));
+window.addEventListener('online', () => toast('Tekrar çevrimiçi'));
+
 /* ============ Eşitleme göstergesi ============ */
 function renderSyncPill() {
   const pill = $('#syncPill'), i = Sync.info;
   if (!i.available) { pill.hidden = true; return; }
   const [cls, label] = SYNC_STATUS[i.status] || SYNC_STATUS.yok;
-  const ic = i.status === 'esitleniyor' || i.status === 'bekliyor' ? 'refresh' : i.status === 'hata' || i.status === 'kurulum' ? 'cloudOff' : 'cloud';
+  const ic = i.status === 'esitleniyor' || i.status === 'bekliyor' ? 'refresh' : ['hata', 'kurulum', 'cevrimdisi'].includes(i.status) ? 'cloudOff' : 'cloud';
   pill.hidden = false;
   pill.className = `sync-pill ${cls} ${i.status === 'esitleniyor' ? 'spin' : ''}`;
   pill.innerHTML = `${icon(ic)}<span>${label}</span>`;

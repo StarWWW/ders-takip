@@ -61,11 +61,14 @@ const Sync = (() => {
   const getGist = (auth = true) => api(`/gists/${cfg.gistId}`, { auth });
   const parseBlob = (text) => { try { const j = JSON.parse(text); return j && j.iv && j.ct ? j : null; } catch (e) { return null; } };
 
-  async function loadToken(gist) {
+  async function loadLocalToken() {
     try {
       const local = parseBlob(localStorage.getItem(TOKEN_STORE));
       if (local) { token = (await decrypt(local)).t; return true; }
     } catch (e) { try { localStorage.removeItem(TOKEN_STORE); } catch (x) { /* yok say */ } }
+    return false;
+  }
+  async function loadToken(gist) {
     const blob = parseBlob(await fileContent(gist.files[TOKEN_FILE]));
     if (!blob) return false;
     try {
@@ -84,6 +87,8 @@ const Sync = (() => {
     if (!cfg || !key) return;
     if (busy) { again = true; return; }
     busy = true;
+    if (!token) await loadLocalToken();
+    if (!navigator.onLine) { busy = false; setStatus('cevrimdisi'); return; }
     setStatus('esitleniyor');
     try {
       const gist = await getGist(!!token);
@@ -104,7 +109,9 @@ const Sync = (() => {
         token = null;
         try { localStorage.removeItem(TOKEN_STORE); } catch (x) { /* yok say */ }
       }
-      setStatus('hata', e.message || String(e));
+      // Ağ hatası (fetch TypeError) ya da bağlantı yok: kayıtlar yerelde güvende, bağlantı gelince gönderilir
+      if (!navigator.onLine || e instanceof TypeError) setStatus('cevrimdisi');
+      else setStatus('hata', e.message || String(e));
     } finally {
       busy = false;
       if (again) { again = false; run(); }
@@ -114,6 +121,7 @@ const Sync = (() => {
   function schedulePush() {
     if (!cfg || !key || !token) return;
     clearTimeout(pushTimer);
+    if (!navigator.onLine) { setStatus('cevrimdisi'); return; }
     setStatus('bekliyor');
     pushTimer = setTimeout(run, 2500);
   }
@@ -154,7 +162,8 @@ const Sync = (() => {
     run();
     const poll = () => { if (document.visibilityState === 'visible' && token) run(); };
     document.addEventListener('visibilitychange', poll);
-    window.addEventListener('online', poll);
+    window.addEventListener('online', () => run());
+    window.addEventListener('offline', () => setStatus('cevrimdisi'));
     pollTimer = setInterval(poll, 60000);
     // Sayfadan çıkarken bekleyen değişikliği gönder
     window.addEventListener('pagehide', () => { if (pushTimer && token) { clearTimeout(pushTimer); run(); } });

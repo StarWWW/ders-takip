@@ -142,5 +142,19 @@
     try { return !!localStorage.getItem(KEY_STORE); } catch (x) { return false; }
   };
 
+  // "Ana ekrana ekle" istemi kilit ekranındayken de gelebilir; sakla, uygulama kendi düğmesiyle gösterir
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    window.installPrompt = e;
+    window.dispatchEvent(new Event('kurulabilir'));
+  });
+
+  // İnternetsiz açılış için servis çalışanı (yerel dosya modunda desteklenmez)
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => { /* desteklenmiyor: normal çalışmaya devam */ });
+    });
+  }
+
   start();
 })();
