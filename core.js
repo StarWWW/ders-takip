@@ -181,7 +181,7 @@ let state = loadState();
 let saveOk = true;
 
 /* ============ Eşitleme için değişiklik takibi ============
- * Durum, küçük anahtarlara düzleştirilir (ör. "att~BMB211~3|3|3|4"). Her anahtarın son değişme zamanı
+ * Durum, küçük anahtarlara düzleştirilir (ör. "att~DERS101~3|3|3|4"). Her anahtarın son değişme zamanı
  * syncMeta'da tutulur; birleştirmede anahtar bazında en yeni değer kazanır, silinenler de zamanla işaretlenir.
  */
 const META_STORE = 'dersTakip.meta';

@@ -19,7 +19,7 @@ Kişisel ders programı, devamsızlık, not ve GNO takip uygulaması. Tek sayfal
 
 ## Veriyi güncelleme
 
-1. `ozel/veri.js` dosyasını düzenle (ör. şubeler açıklandığında `"sections": { "BIL101": "A", ... }`).
+1. `ozel/veri.js` dosyasını düzenle (ör. şubeler açıklandığında `"sections": { "DERS101": "A", ... }`).
 2. Şifrele:
    ```bash
    python araclar/sifrele.py
