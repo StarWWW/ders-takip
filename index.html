@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0f766e">
+<title>Ders Takip</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230f766e'/%3E%3Cpath d='M20 10.5 12 6.5l-8 4 8 4 8-4z M7 12.2v3.6c2.6 2.2 7.4 2.2 10 0v-3.6' fill='none' stroke='white' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=6">
+<script src="tema.js?v=6"></script>
+</head>
+<body>
+
+<main class="lock" id="lock" hidden>
+  <div class="lock-card">
+    <div class="brand-mark lock-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+    </div>
+    <h1 class="lock-title">Ders Takip</h1>
+    <p class="lock-sub">Bu sayfadaki bilgiler şifrelidir. Devam etmek için şifreni gir.</p>
+    <form id="lockForm" class="lock-form" novalidate>
+      <div class="field">
+        <label for="lockPw">Şifre</label>
+        <input id="lockPw" class="input" type="password" name="password" autocomplete="current-password" required>
+      </div>
+      <label class="lock-remember"><input type="checkbox" id="lockRemember"> Bu cihazda açık kalsın</label>
+      <button id="lockBtn" class="btn btn-primary" type="submit">Kilidi aç</button>
+    </form>
+    <p class="lock-err" id="lockErr" role="alert" hidden></p>
+    <p class="help lock-foot">Şifre çözme tamamen bu cihazda yapılır; şifren hiçbir sunucuya gönderilmez.</p>
+  </div>
+</main>
+
+<div id="app" hidden>
+<a class="skip" href="#view">İçeriğe geç</a>
+<div class="app">
+  <aside class="sidebar" aria-label="Ana menü">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+      </div>
+      <div>
+        <div class="brand-title">Ders Takip</div>
+        <div class="brand-sub" id="brandSub"></div>
+      </div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot" id="sideFoot"></div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1 class="page-title" id="pageTitle">Bugün</h1>
+        <span class="week-pill" id="weekPill"></span>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn" id="themeBtn" type="button" aria-label="Temayı değiştir"></button>
+        <button class="icon-btn only-mobile" id="settingsBtnTop" type="button" aria-label="Ayarlar"></button>
+      </div>
+    </header>
+    <div id="view" class="view" tabindex="-1"></div>
+  </main>
+
+  <nav class="tabbar" id="tabbar" aria-label="Alt menü"></nav>
+</div>
+
+<div class="drawer-wrap" id="drawerWrap" hidden>
+  <div class="scrim" data-close></div>
+  <section class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle"></section>
+</div>
+
+<div class="toast-wrap" id="toasts" aria-live="polite"></div>
+</div>
+
+<noscript><p style="padding:24px;font-family:sans-serif">Bu uygulama için JavaScript gereklidir.</p></noscript>
+<script src="sabitler.js?v=6"></script>
+<script src="kilit.js?v=6"></script>
+</body>
+</html>

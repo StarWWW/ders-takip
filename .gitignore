@@ -1,0 +1,11 @@
+# Kişisel veriler ve şifreleme anahtarı — ASLA yüklenmez
+ozel/
+
+# Python
+__pycache__/
+*.pyc
+
+# Sistem
+.DS_Store
+Thumbs.db
+desktop.ini
