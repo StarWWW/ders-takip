@@ -7,7 +7,14 @@ Kişisel ders programı, devamsızlık, not ve GNO takip uygulaması. Tek sayfal
 - Kişisel veriler (ders listesi, transkript, isim) **`veri.enc.json` içinde şifrelidir**: AES-256-GCM, anahtar şifreden PBKDF2-SHA256 (600.000 tur) ile türetilir.
 - Şifre çözme tamamen tarayıcıda (WebCrypto) yapılır; şifre hiçbir sunucuya gönderilmez.
 - Şifresiz kaynak veri (`ozel/veri.js`) ve türetilmiş anahtar (`ozel/anahtar.json`) yalnızca yerel bilgisayarda durur ve `.gitignore` ile depodan hariç tutulur.
-- Yoklama, not, görev gibi kayıtlar her cihazın kendi tarayıcısında (localStorage) saklanır. Cihazlar arası taşımak için Ayarlar → Yedeği indir / Yedek yükle.
+- Yoklama, not, görev gibi kayıtlar tarayıcıda (localStorage) tutulur ve **otomatik eşitleme** açıksa gizli bir GitHub Gist'e şifreli olarak gönderilir.
+
+## Cihazlar arası eşitleme
+
+- Gist kimliği şifreli verinin içindedir (`sync.gistId`); Gist'te `durum.enc.json` (kayıtlar) ve `erisim.enc.json` (erişim anahtarı) bulunur. İkisi de site şifresinden türetilen anahtarla AES-256-GCM ile şifrelenir.
+- Kurulum bir kez yapılır: Ayarlar → Cihazlar arası eşitleme. Yalnızca **Gists: Read and write** izni olan ince ayarlı (fine-grained) bir GitHub erişim anahtarı yapıştırılır. Diğer cihazlar kilidi açınca anahtarı otomatik alır.
+- Birleştirme kayıt bazındadır: her yoklama, not, görev ve ayarın kendi zaman damgası vardır, en yeni değişiklik kazanır; silmeler de eşitlenir. Tema cihaza özeldir.
+- Kapatmak için Ayarlar → "Tüm cihazlarda kapat", ardından GitHub → Settings → Developer settings → Personal access tokens üzerinden anahtarı iptal et.
 - Sayfa `noindex` ve `robots.txt` ile arama motorlarına kapalıdır; Content-Security-Policy yalnızca kendi dosyalarına ve Google Fonts'a izin verir.
 
 ## Veriyi güncelleme

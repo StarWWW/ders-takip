@@ -4,7 +4,7 @@
  */
 (function () {
   const KEY_STORE = 'dersTakip.anahtar';
-  const APP_SCRIPTS = ['core.js', 'views.js', 'app.js'];
+  const APP_SCRIPTS = ['core.js', 'views.js', 'esitle.js', 'app.js'];
   const VERSION = document.currentScript.src.split('?')[1] || '';
   const $ = (s) => document.querySelector(s);
 
@@ -21,12 +21,14 @@
     });
   }
 
-  async function boot(data) {
+  async function boot(data, key) {
     if (!data || !Array.isArray(data.courses) || !Array.isArray(data.transcript)) throw new Error('Veri biçimi geçersiz');
     window.STUDENT = data.student || { firstName: '' };
     window.COURSES = data.courses;
     window.TRANSCRIPT = data.transcript;
     window.DATA_SECTIONS = data.sections || null;
+    window.SYNC_CONFIG = data.sync || null;
+    window.DATA_KEY = key || null; // eşitleme verisini şifrelemek için (dışarı aktarılamaz CryptoKey)
     $('#lock').hidden = true;
     $('#app').hidden = false;
     for (const s of APP_SCRIPTS) await loadScript(s);
@@ -36,7 +38,7 @@
     const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password.normalize('NFC')), 'PBKDF2', false, ['deriveKey']);
     return crypto.subtle.deriveKey(
       { name: 'PBKDF2', hash: 'SHA-256', salt: b64d(enc.salt), iterations: enc.iter },
-      base, { name: 'AES-GCM', length: 256 }, extractable, ['decrypt'],
+      base, { name: 'AES-GCM', length: 256 }, extractable, ['encrypt', 'decrypt'],
     );
   }
   async function decrypt(enc, key) {
@@ -66,7 +68,7 @@
           try { localStorage.setItem(KEY_STORE, JSON.stringify({ salt: enc.salt, k: b64e(raw) })); } catch (x) { /* depolama kapalı */ }
         }
         pw.value = '';
-        await boot(data);
+        await boot(data, key);
       } catch (x) {
         btn.disabled = false; btn.textContent = 'Kilidi aç';
         err.textContent = x && x.name === 'OperationError' ? 'Şifre yanlış. Tekrar dene.' : `Açılamadı: ${x.message || x}`;
@@ -84,7 +86,13 @@
     if (local && params.get('kilit') !== '1') {
       try {
         await loadScript('ozel/veri.js');
-        if (window.VERI) { await boot(window.VERI); return; }
+        if (window.VERI) {
+          // ?esitlemetest=1 → yalnızca yerelde, rastgele geçici anahtarla eşitleme akışını denemek için
+          const devKey = params.get('esitlemetest') === '1'
+            ? await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']) : null;
+          await boot(window.VERI, devKey);
+          return;
+        }
       } catch (x) { /* yerel veri yok, şifreli akışa geç */ }
     }
 
@@ -113,9 +121,9 @@
     try {
       const saved = JSON.parse(localStorage.getItem(KEY_STORE) || 'null');
       if (saved && saved.salt === enc.salt) {
-        const key = await crypto.subtle.importKey('raw', b64d(saved.k), 'AES-GCM', false, ['decrypt']);
+        const key = await crypto.subtle.importKey('raw', b64d(saved.k), 'AES-GCM', false, ['encrypt', 'decrypt']);
         const data = await decrypt(enc, key);
-        await boot(data);
+        await boot(data, key);
         return;
       }
       if (saved) localStorage.removeItem(KEY_STORE);
@@ -127,7 +135,7 @@
 
   // Uygulama içinden "Kilitle"
   window.lockApp = function () {
-    try { localStorage.removeItem(KEY_STORE); } catch (x) { /* yok say */ }
+    try { localStorage.removeItem(KEY_STORE); localStorage.removeItem('dersTakip.erisim'); } catch (x) { /* yok say */ }
     location.reload();
   };
   window.hasRememberedKey = function () {

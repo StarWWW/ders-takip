@@ -32,6 +32,10 @@ const ICONS = {
   shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
   minus: '<path d="M5 12h14"/>',
   note: '<path d="M15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9z"/><path d="M15 3v6h6"/>',
+  cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+  cloudOff: '<path d="m2 2 20 20"/><path d="M5.78 5.78A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.31-.2"/><path d="M21.53 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7 7 0 0 0 10.12 5.2"/>',
+  refresh: '<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>',
+  external: '<path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
 };
 const icon = (n, cls = '') => `<svg viewBox="0 0 24 24" aria-hidden="true" class="${cls}">${ICONS[n] || ''}</svg>`;
@@ -175,8 +179,98 @@ function loadState() {
 }
 let state = loadState();
 let saveOk = true;
-function save() {
+
+/* ============ Eşitleme için değişiklik takibi ============
+ * Durum, küçük anahtarlara düzleştirilir (ör. "att~BMB211~3|3|3|4"). Her anahtarın son değişme zamanı
+ * syncMeta'da tutulur; birleştirmede anahtar bazında en yeni değer kazanır, silinenler de zamanla işaretlenir.
+ */
+const META_STORE = 'dersTakip.meta';
+const SYNC_SETTINGS = ['start', 'weeks', 'vizeW', 'theoryLimit', 'labLimit', 'scale', 'targetGno']; // tema cihaza özeldir
+const SYNC_KEY_RE = /^(att|grade|sim|note|limit|sec|set|task)~[^~]+(~[^~]+)?$/;
+function flattenState(st) {
+  const m = new Map();
+  const put = (k, v) => { if (v === undefined || v === null || v === '') return; m.set(k, JSON.stringify(v)); };
+  for (const [code, a] of Object.entries(st.attendance)) for (const [k, v] of Object.entries(a)) put(`att~${code}~${k}`, v);
+  for (const [code, g] of Object.entries(st.grades)) for (const f of ['vize', 'final', 'but']) put(`grade~${code}~${f}`, g[f]);
+  for (const [code, L] of Object.entries(st.sim)) put(`sim~${code}`, L);
+  for (const [code, t] of Object.entries(st.notes)) put(`note~${code}`, t);
+  for (const [code, v] of Object.entries(st.limitOverride)) put(`limit~${code}`, v);
+  if (st.sections) for (const [code, k] of Object.entries(st.sections)) put(`sec~${code}`, k);
+  for (const k of SYNC_SETTINGS) put(`set~${k}`, st.settings[k]);
+  for (const t of st.tasks) put(`task~${t.id}`, t);
+  return m;
+}
+function applySyncValue(st, key, raw) {
+  const v = raw === undefined ? undefined : JSON.parse(raw);
+  const [type, a, b] = key.split('~');
+  const setIn = (obj, prop, val) => { if (val === undefined) delete obj[prop]; else obj[prop] = val; };
+  switch (type) {
+    case 'att': st.attendance[a] = st.attendance[a] || {}; setIn(st.attendance[a], b, v); break;
+    case 'grade': st.grades[a] = st.grades[a] || {}; st.grades[a][b] = v === undefined ? '' : v; break;
+    case 'sim': setIn(st.sim, a, v); break;
+    case 'note': setIn(st.notes, a, v); break;
+    case 'limit': setIn(st.limitOverride, a, v); break;
+    case 'sec': st.sections = st.sections || {}; setIn(st.sections, a, v); break;
+    case 'set': if (v !== undefined && SYNC_SETTINGS.includes(a)) st.settings[a] = v; break;
+    case 'task': {
+      const i = st.tasks.findIndex((t) => t.id === a);
+      if (v === undefined) { if (i >= 0) st.tasks.splice(i, 1); } else if (i >= 0) st.tasks[i] = v; else st.tasks.push(v);
+      break;
+    }
+  }
+}
+let syncMeta = {};
+let hadMetaStore = false;
+try {
+  const raw = localStorage.getItem(META_STORE);
+  if (raw) { hadMetaStore = true; const m = JSON.parse(raw); if (isObj(m)) for (const [k, t] of Object.entries(m)) if (SYNC_KEY_RE.test(k) && Number(t) > 0) syncMeta[k] = Number(t); }
+} catch (e) { /* yok say */ }
+let baseFlat = flattenState(state);
+// Eşitleme gelmeden önce girilmiş kayıtlar: düşük zaman damgasıyla işaretle (uzaktaki gerçek değişikliklere yenilir, boş uzağa gönderilir)
+if (!hadMetaStore && localStorage.getItem(STORE_KEY)) for (const k of baseFlat.keys()) syncMeta[k] = 1;
+const saveMeta = () => { try { localStorage.setItem(META_STORE, JSON.stringify(syncMeta)); } catch (e) { /* yok say */ } };
+saveMeta();
+
+// silent: kullanıcı değişikliği değil (varsayılanların kurulması, uzaktan birleştirme) — zaman damgası atılmaz
+function save(opts = {}) {
+  const cur = flattenState(state);
+  if (!opts.silent) {
+    const t = Date.now();
+    let changed = false;
+    for (const k of new Set([...baseFlat.keys(), ...cur.keys()])) if (baseFlat.get(k) !== cur.get(k)) { syncMeta[k] = t; changed = true; }
+    if (changed) saveMeta();
+    if (changed && typeof window.onLocalChange === 'function') window.onLocalChange();
+  }
+  baseFlat = cur;
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); saveOk = true; } catch (e) { saveOk = false; }
+}
+
+function syncSnapshot() {
+  return { v: 1, at: Date.now(), meta: syncMeta, values: Object.fromEntries(flattenState(state)) };
+}
+// Uzaktaki anlık görüntüyü yerel durumla birleştirir
+function mergeRemote(remote) {
+  const rMeta = isObj(remote?.meta) ? remote.meta : {};
+  const rVals = isObj(remote?.values) ? remote.values : {};
+  const next = JSON.parse(JSON.stringify(state));
+  let changedLocal = false, needPush = false;
+  for (const k of new Set([...Object.keys(rMeta), ...Object.keys(syncMeta)])) {
+    if (!SYNC_KEY_RE.test(k)) continue;
+    const lt = syncMeta[k] || 0, rt = Number(rMeta[k]) || 0;
+    if (rt > lt) {
+      try { applySyncValue(next, k, typeof rVals[k] === 'string' ? rVals[k] : undefined); } catch (e) { continue; }
+      syncMeta[k] = rt; changedLocal = true;
+    } else if (lt > rt) needPush = true;
+  }
+  if (changedLocal) {
+    const theme = state.settings.theme, applied = state.appliedDataSections;
+    state = sanitizeState({ ...next, v: 2 });
+    state.settings.theme = theme; state.appliedDataSections = applied;
+    if (!state.sections) state.sections = {};
+    saveMeta();
+    save({ silent: true });
+  }
+  return { changedLocal, needPush };
 }
 
 /* ============ Program & çakışma motoru ============ */
@@ -240,9 +334,12 @@ const SECTIONS_KNOWN = !!OFFICIAL_SECTIONS;
 if (OFFICIAL_SECTIONS && state.appliedDataSections !== JSON.stringify(OFFICIAL_SECTIONS)) {
   state.sections = { ...OPTIMAL, ...(state.sections || {}), ...OFFICIAL_SECTIONS };
   state.appliedDataSections = JSON.stringify(OFFICIAL_SECTIONS);
-  save();
+  save(); // bölümün açıkladığı şube: gerçek değişiklik olarak eşitlenir
 }
-if (!state.sections) { state.sections = { ...OPTIMAL }; save(); }
+if (!state.sections || COURSES.some((c) => hasSections(c) && !state.sections[c.code])) {
+  state.sections = { ...OPTIMAL, ...(state.sections || {}) };
+  save({ silent: true }); // varsayılan öneri: diğer cihazlardaki seçimi ezmesin
+}
 
 const conflictsOfCourse = (code, list) => (list || findConflicts(state.sections)).filter((c) => c.a.code === code || c.b.code === code);
 const SEV_META = {

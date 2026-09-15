@@ -171,6 +171,15 @@ document.addEventListener('click', (e) => {
       break;
     case 'print': window.print(); break;
     case 'lock': if (window.lockApp) window.lockApp(); break;
+    case 'syncNow': Sync.run(); break;
+    case 'syncForget':
+      if (confirm('Bu cihaz artık eşitlenmeyecek (diğer cihazlar etkilenmez). Devam edilsin mi?')) { Sync.forgetDevice(); render(); toast('Bu cihazda eşitleme kapatıldı'); }
+      break;
+    case 'syncOffAll':
+      if (confirm('Kayıtlı erişim anahtarı eşitleme kaydından silinecek; tüm cihazlarda eşitleme durur. Anahtarı GitHub ayarlarından da iptal etmeni öneririm. Devam edilsin mi?')) {
+        Sync.disableEverywhere().then(() => { render(); toast('Eşitleme tüm cihazlarda kapatıldı'); }).catch((err) => toast(err.message));
+      }
+      break;
     case 'day': ui.day = Number(el.dataset.day); render(); break;
     case 'filter': ui.filter = el.dataset.f; render(); break;
     case 'toggleTask': {
@@ -311,6 +320,21 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('submit', (e) => {
+  const syncForm = e.target.closest('[data-form="sync"]');
+  if (syncForm) {
+    e.preventDefault();
+    const input = syncForm.elements.token, btn = syncForm.querySelector('button'), err = $('#syncErr');
+    btn.disabled = true; btn.textContent = 'Doğrulanıyor…'; err.hidden = true;
+    Sync.setup(input.value).then(() => {
+      input.value = '';
+      toast('Eşitleme açıldı');
+      render();
+    }).catch((x) => {
+      btn.disabled = false; btn.innerHTML = `${icon('cloud')}Eşitlemeyi aç`;
+      err.textContent = x.message || String(x); err.hidden = false;
+    });
+    return;
+  }
   const form = e.target.closest('[data-form="task"]');
   if (!form) return;
   e.preventDefault();
@@ -345,10 +369,30 @@ setInterval(() => {
   if (!busy && !openCode && (currentRoute === 'bugun' || currentRoute === 'program')) render();
 }, 30000);
 
+/* ============ Eşitleme göstergesi ============ */
+function renderSyncPill() {
+  const pill = $('#syncPill'), i = Sync.info;
+  if (!i.available) { pill.hidden = true; return; }
+  const [cls, label] = SYNC_STATUS[i.status] || SYNC_STATUS.yok;
+  const ic = i.status === 'esitleniyor' || i.status === 'bekliyor' ? 'refresh' : i.status === 'hata' || i.status === 'kurulum' ? 'cloudOff' : 'cloud';
+  pill.hidden = false;
+  pill.className = `sync-pill ${cls} ${i.status === 'esitleniyor' ? 'spin' : ''}`;
+  pill.innerHTML = `${icon(ic)}<span>${label}</span>`;
+  pill.title = i.lastError || `Son eşitleme: ${agoText(i.lastSync)}`;
+  pill.setAttribute('aria-label', `Eşitleme durumu: ${label}`);
+}
+Sync.onChange(() => {
+  renderSyncPill();
+  const typing = document.activeElement && document.activeElement.matches('input, textarea, select');
+  if (currentRoute === 'ayarlar' && !typing) render();
+});
+
 /* ============ Başlat ============ */
 applyTheme();
 {
   const { arg } = parseHash();
   route();
   if (arg) drawerPushed = false;
+  renderSyncPill();
+  Sync.start();
 }

@@ -668,9 +668,64 @@ function viewAcademic() {
 }
 
 /* ============ AYARLAR ============ */
+const SYNC_STATUS = {
+  yok: ['b-neutral', 'Yapılandırılmamış'],
+  yerel: ['b-neutral', 'Yerel modda kapalı'],
+  baslatiliyor: ['b-neutral', 'Başlatılıyor…'],
+  esitleniyor: ['b-info', 'Eşitleniyor…'],
+  bekliyor: ['b-info', 'Gönderilecek…'],
+  acik: ['b-ok', 'Eşitlendi'],
+  kurulum: ['b-warn', 'Kurulum gerekli'],
+  hata: ['b-danger', 'Hata'],
+};
+function agoText(t) {
+  if (!t) return 'henüz yok';
+  const s = Math.round((Date.now() - t) / 1000);
+  if (s < 45) return 'az önce';
+  if (s < 3600) return `${Math.round(s / 60)} dk önce`;
+  return fmtDate(new Date(t), { hour: '2-digit', minute: '2-digit' });
+}
+function syncCardHtml() {
+  const i = Sync.info;
+  if (!i.configured) return '';
+  const [cls, label] = SYNC_STATUS[i.status] || SYNC_STATUS.yok;
+  const head = `<div class="card-h"><h3 class="card-t">${icon('cloud')}Cihazlar arası eşitleme</h3><span class="badge ${cls}">${label}</span></div>`;
+  if (!i.available) {
+    return `<section class="card card-pad">${head}<p class="help" style="margin:0">Eşitleme yalnızca yayındaki sitede, şifreyle açıldığında çalışır.</p></section>`;
+  }
+  const err = i.status === 'hata' && i.lastError ? `<div class="callout danger" style="margin-bottom:12px">${icon('alert')}<div>${esc(i.lastError)}</div></div>` : '';
+  if (i.hasToken) {
+    return `<section class="card card-pad">${head}${err}
+      <p class="help" style="margin:0 0 12px">Yoklama, not, görev, simülasyon ve ayarların şifrelenerek GitHub'daki gizli kaydına gönderilir; diğer cihazlar kilidi açınca otomatik alır. Son eşitleme: <b>${agoText(i.lastSync)}</b>.</p>
+      <div class="row wrap">
+        <button type="button" class="btn" data-act="syncNow" ${i.status === 'esitleniyor' ? 'disabled' : ''}>${icon('refresh')}Şimdi eşitle</button>
+        <button type="button" class="btn btn-ghost" data-act="syncForget">Bu cihazda kapat</button>
+        <button type="button" class="btn btn-ghost btn-danger" data-act="syncOffAll">Tüm cihazlarda kapat</button>
+      </div>
+    </section>`;
+  }
+  return `<section class="card card-pad sync-setup">${head}${err}
+    <p class="help" style="margin:0 0 12px">Bir kez kurman yeterli: GitHub'da yalnızca <b>Gist</b> izni olan bir erişim anahtarı oluştur ve buraya yapıştır. Anahtar site şifrenle şifrelenip saklanır; diğer cihazlarda sadece site şifreni girmen yeter.</p>
+    <ol class="steps">
+      <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">GitHub'da yeni erişim anahtarı sayfasını aç ${icon('external')}</a></li>
+      <li><b>Token name:</b> Ders Takip eşitleme · <b>Expiration:</b> 1 yıl</li>
+      <li><b>Repository access:</b> Public repositories (varsayılan, yalnızca okuma)</li>
+      <li><b>Permissions → Account → Gists:</b> <i>Read and write</i> seç, başka izin verme</li>
+      <li><b>Generate token</b>'a bas, çıkan <span class="mono">github_pat_…</span> anahtarını kopyala</li>
+    </ol>
+    <form data-form="sync" class="row wrap" style="gap:8px;margin-top:12px" autocomplete="off">
+      <input class="input" style="flex:1;min-width:220px" type="password" name="token" placeholder="github_pat_…" aria-label="GitHub erişim anahtarı" autocomplete="off" spellcheck="false" required>
+      <button class="btn btn-primary" type="submit">${icon('cloud')}Eşitlemeyi aç</button>
+    </form>
+    <p class="help" id="syncErr" role="alert" style="color:var(--danger);margin:8px 0 0" hidden></p>
+  </section>`;
+}
+
 function viewSettings() {
   const s = state.settings;
+  const syncCard = syncCardHtml();
   return `
+  ${syncCard ? `<div style="margin-bottom:16px">${syncCard}</div>` : ''}
   <div class="set-grid">
     <section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('calendar')}Dönem</h3></div>
