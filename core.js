@@ -39,6 +39,8 @@ const ICONS = {
   share: '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="m16 6-4-4-4 4M12 2v13"/>',
   phone: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>',
   plusSquare: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8M12 8v8"/>',
+  bookOpen: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+  bookmark: '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
 };
 const icon = (n, cls = '') => `<svg viewBox="0 0 24 24" aria-hidden="true" class="${cls}">${ICONS[n] || ''}</svg>`;
@@ -105,12 +107,12 @@ const durText = (min) => {
 const STORE_KEY = 'dersTakip.v1';
 const TASK_TYPES = ['Ödev', 'Vize', 'Final', 'Quiz', 'Proje', 'Sunum', 'Diğer'];
 const DEFAULT_SETTINGS = {
-  start: '2026-09-14', weeks: 14, vizeW: 40, theoryLimit: 30, labLimit: 20, theme: 'system',
+  start: '2026-09-14', weeks: 14, midtermWeek: 8, vizeW: 40, theoryLimit: 30, labLimit: 20, theme: 'system',
   scale: [90, 85, 80, 75, 70, 60, 50, 40], // AA BA BB CB CC DC DD FD alt sınırları
   targetGno: 2.0,
 };
 const defaultState = () => ({
-  v: 2, sections: null, appliedDataSections: null, attendance: {}, grades: {}, sim: {}, tasks: [], notes: {}, limitOverride: {},
+  v: 2, sections: null, appliedDataSections: null, attendance: {}, grades: {}, sim: {}, tasks: [], notes: {}, limitOverride: {}, study: {},
   settings: { ...DEFAULT_SETTINGS, scale: [...DEFAULT_SETTINGS.scale] },
 });
 
@@ -118,6 +120,7 @@ const defaultState = () => ({
 const isObj = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
 const numOr = (v, def, lo, hi) => { const n = Number(v); return v === '' || v == null || !isFinite(n) ? def : clamp(n, lo, hi); };
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const GRADE_KEY_RE = /^[a-z]{2,12}$/;
 function sanitizeState(s) {
   const out = defaultState();
   if (!isObj(s)) return out;
@@ -125,6 +128,7 @@ function sanitizeState(s) {
   const S = out.settings;
   S.start = ISO_DATE.test(st.start) ? st.start : DEFAULT_SETTINGS.start;
   S.weeks = Math.round(numOr(st.weeks, 14, 1, 20));
+  S.midtermWeek = Math.round(numOr(st.midtermWeek, 8, 2, 20));
   S.vizeW = numOr(st.vizeW, 40, 0, 100);
   S.theoryLimit = numOr(st.theoryLimit, 30, 0, 100);
   S.labLimit = numOr(st.labLimit, 20, 0, 100);
@@ -153,7 +157,22 @@ function sanitizeState(s) {
   if (isObj(s.grades)) {
     for (const [code, g] of Object.entries(s.grades)) {
       if (!courseByCode[code] || !isObj(g)) continue;
-      out.grades[code] = Object.fromEntries(['vize', 'final', 'but'].map((f) => [f, numOr(g[f], '', 0, 100)]));
+      out.grades[code] = {};
+      for (const [f, v] of Object.entries(g)) if (GRADE_KEY_RE.test(f)) out.grades[code][f] = numOr(v, '', 0, 100);
+    }
+  }
+  if (isObj(s.study)) {
+    for (const [code, m] of Object.entries(s.study)) {
+      if (!courseByCode[code] || !isObj(m)) continue;
+      const mm = {};
+      for (const [w, v] of Object.entries(m)) {
+        if (!/^\d{1,2}$/.test(w) || !isObj(v)) continue;
+        const e = {};
+        if (v.d) e.d = 1;
+        if (v.r) e.r = 1;
+        if (e.d || e.r) mm[w] = e;
+      }
+      out.study[code] = mm;
     }
   }
   if (isObj(s.sim)) for (const [code, L] of Object.entries(s.sim)) if (courseByCode[code] && LETTERS.includes(L)) out.sim[code] = L;
@@ -188,13 +207,14 @@ let saveOk = true;
  * syncMeta'da tutulur; birleştirmede anahtar bazında en yeni değer kazanır, silinenler de zamanla işaretlenir.
  */
 const META_STORE = 'dersTakip.meta';
-const SYNC_SETTINGS = ['start', 'weeks', 'vizeW', 'theoryLimit', 'labLimit', 'scale', 'targetGno']; // tema cihaza özeldir
-const SYNC_KEY_RE = /^(att|grade|sim|note|limit|sec|set|task)~[^~]+(~[^~]+)?$/;
+const SYNC_SETTINGS = ['start', 'weeks', 'midtermWeek', 'vizeW', 'theoryLimit', 'labLimit', 'scale', 'targetGno']; // tema cihaza özeldir
+const SYNC_KEY_RE = /^(att|grade|sim|note|limit|sec|set|task|study)~[^~]+(~[^~]+)?$/;
 function flattenState(st) {
   const m = new Map();
   const put = (k, v) => { if (v === undefined || v === null || v === '') return; m.set(k, JSON.stringify(v)); };
   for (const [code, a] of Object.entries(st.attendance)) for (const [k, v] of Object.entries(a)) put(`att~${code}~${k}`, v);
-  for (const [code, g] of Object.entries(st.grades)) for (const f of ['vize', 'final', 'but']) put(`grade~${code}~${f}`, g[f]);
+  for (const [code, g] of Object.entries(st.grades)) for (const [f, v] of Object.entries(g)) put(`grade~${code}~${f}`, v);
+  for (const [code, m] of Object.entries(st.study || {})) for (const [w, v] of Object.entries(m)) put(`study~${code}~${w}`, v);
   for (const [code, L] of Object.entries(st.sim)) put(`sim~${code}`, L);
   for (const [code, t] of Object.entries(st.notes)) put(`note~${code}`, t);
   for (const [code, v] of Object.entries(st.limitOverride)) put(`limit~${code}`, v);
@@ -210,6 +230,7 @@ function applySyncValue(st, key, raw) {
   switch (type) {
     case 'att': st.attendance[a] = st.attendance[a] || {}; setIn(st.attendance[a], b, v); break;
     case 'grade': st.grades[a] = st.grades[a] || {}; st.grades[a][b] = v === undefined ? '' : v; break;
+    case 'study': st.study = st.study || {}; st.study[a] = st.study[a] || {}; setIn(st.study[a], b, v); break;
     case 'sim': setIn(st.sim, a, v); break;
     case 'note': setIn(st.notes, a, v); break;
     case 'limit': setIn(st.limitOverride, a, v); break;
@@ -388,18 +409,68 @@ function letterOf(score) {
   for (let i = 0; i < sc.length; i++) if (score >= sc[i]) return LETTERS[i];
   return 'FF';
 }
+// Değerlendirme bileşenleri: bilgi paketindeki resmi oranlar, yoksa Ayarlar'daki vize/final ağırlığı
+function gradeParts(c) {
+  const ev = (c?.study?.degerlendirme || []).filter((e) => e.yuzde > 0 && GRADE_KEY_RE.test(e.key));
+  const total = ev.reduce((s, e) => s + e.yuzde, 0);
+  if (ev.some((e) => e.key === 'final') && Math.abs(total - 100) < 0.5) {
+    const label = (e) => (e.key === 'vize' ? 'Vize' : e.key === 'final' ? 'Final' : e.ad);
+    return { official: true, parts: ev.map((e) => ({ key: e.key, label: label(e), pct: e.yuzde, count: e.sayi || 1 })) };
+  }
+  const w = state.settings.vizeW;
+  return { official: false, parts: [{ key: 'vize', label: 'Vize', pct: w, count: 1 }, { key: 'final', label: 'Final', pct: 100 - w, count: 1 }] };
+}
 function gradeCalc(code) {
+  const c = courseByCode[code];
   const g = state.grades[code] || {};
-  const w = state.settings.vizeW / 100;
-  const v = num(g.vize), f = num(g.final), b = num(g.but);
-  const fin = b ?? f;
-  const avg = v != null && fin != null ? Math.round(v * w + fin * (1 - w)) : null;
+  const { official, parts } = gradeParts(c);
+  const vals = Object.fromEntries(parts.map((p) => [p.key, num(g[p.key])]));
+  const b = num(g.but);
+  const eff = { ...vals, ...(b != null ? { final: b } : {}) };
+  const avg = parts.every((p) => eff[p.key] != null) ? Math.round(parts.reduce((s, p) => s + (eff[p.key] * p.pct) / 100, 0)) : null;
+  const fin = parts.find((p) => p.key === 'final');
+  const others = parts.filter((p) => p.key !== 'final');
+  const missing = others.filter((p) => vals[p.key] == null).map((p) => p.label);
+  const othersSum = others.reduce((s, p) => s + ((vals[p.key] ?? 0) * p.pct) / 100, 0);
   const need = (letter) => {
-    if (v == null) return null;
+    if (missing.length || !fin) return null;
     const thr = state.settings.scale[LETTERS.indexOf(letter)];
-    return clamp(Math.ceil((thr - v * w) / (1 - w)), 0, 999);
+    return clamp(Math.ceil((thr - othersSum) / (fin.pct / 100) - 1e-9), 0, 999);
   };
-  return { v, f, b, avg, letter: avg != null ? letterOf(avg) : null, need };
+  return { official, parts, vals, v: vals.vize ?? null, f: vals.final ?? null, b, avg, letter: avg != null ? letterOf(avg) : null, need, missing, anyEntered: others.some((p) => vals[p.key] != null) };
+}
+
+/* ============ Çalışma konuları ============ */
+const studyOwner = (c) => (c?.study?.ortak && courseByCode[c.study.ortak]) || c;
+const studyTopics = (c) => studyOwner(c)?.study?.haftalar || [];
+const studyOwners = () => COURSES.filter((c) => (c.study?.haftalar || []).length);
+const studyMark = (code, w) => state.study[code]?.[w] || null;
+function toggleStudy(code, w, field) {
+  const owner = studyOwner(courseByCode[code]).code;
+  const cur = { ...(studyMark(owner, w) || {}) };
+  if (cur[field]) delete cur[field]; else cur[field] = 1;
+  state.study[owner] = state.study[owner] || {};
+  if (cur.d || cur.r) state.study[owner][w] = cur; else delete state.study[owner][w];
+  save();
+  return cur;
+}
+function studyScopeTopics(c, scope) {
+  const list = studyTopics(c), owner = studyOwner(c).code, mw = state.settings.midtermWeek;
+  if (scope === 'vize') return list.filter((h) => h.h < mw);
+  if (scope === 'tekrar') return list.filter((h) => studyMark(owner, h.h)?.r);
+  return list;
+}
+function studyStats(c, scope) {
+  const owner = studyOwner(c).code, cur = weekOf(now());
+  let done = 0, review = 0, behind = 0;
+  const list = studyScopeTopics(c, scope);
+  for (const h of list) {
+    const m = studyMark(owner, h.h);
+    if (m?.d) done++;
+    if (m?.r) review++;
+    if (!m?.d && h.h < cur) behind++;
+  }
+  return { total: list.length, done, review, behind };
 }
 const gradeClass = (L) => (!L ? 'g-none' : ['FD', 'FF', 'DS'].includes(L) ? 'g-fail' : ['DC', 'DD'].includes(L) ? 'g-cond' : 'g-pass');
 

@@ -3,7 +3,8 @@ const ROUTES = {
   bugun: { title: 'Bugün', icon: 'home', render: viewToday, tab: true },
   program: { title: 'Program', icon: 'calendar', render: viewProgram, tab: true },
   dersler: { title: 'Dersler', icon: 'book', render: viewCourses, tab: true },
-  ajanda: { title: 'Ajanda', icon: 'tasks', render: viewTasks, tab: true },
+  calisma: { title: 'Çalışma', icon: 'bookOpen', render: viewStudy, tab: true },
+  ajanda: { title: 'Ajanda', icon: 'tasks', render: viewTasks, tab: false, nav: false, parent: 'calisma' },
   akademik: { title: 'Akademik', icon: 'cap', render: viewAcademic, tab: true },
   ayarlar: { title: 'Ayarlar', icon: 'sliders', render: viewSettings, tab: false },
 };
@@ -18,9 +19,10 @@ function renderNav() {
   $('#brandSub').textContent = STUDENT.term || '';
   const overdue = state.tasks.filter((t) => !t.done && t.date && daysBetween(now(), parseDate(t.date)) < 0).length;
   const crit = findConflicts(state.sections).filter((c) => c.sev === 'kritik').length;
-  const badge = (k) => (k === 'ajanda' && overdue ? overdue : k === 'program' && crit ? crit : 0);
-  const link = (k, r) => `<a href="#${k}" ${currentRoute === k ? 'aria-current="page"' : ''}>${icon(r.icon)}<span>${r.title}</span>${badge(k) ? `<span class="nav-badge">${badge(k)}</span>` : ''}</a>`;
-  $('#nav').innerHTML = Object.entries(ROUTES).map(([k, r]) => link(k, r)).join('');
+  const badge = (k) => (k === 'calisma' && overdue ? overdue : k === 'program' && crit ? crit : 0);
+  const active = (k) => currentRoute === k || ROUTES[currentRoute]?.parent === k;
+  const link = (k, r) => `<a href="#${k}" ${active(k) ? 'aria-current="page"' : ''}>${icon(r.icon)}<span>${r.title}</span>${badge(k) ? `<span class="nav-badge">${badge(k)}</span>` : ''}</a>`;
+  $('#nav').innerHTML = Object.entries(ROUTES).filter(([, r]) => r.nav !== false).map(([k, r]) => link(k, r)).join('');
   $('#tabbar').innerHTML = Object.entries(ROUTES).filter(([, r]) => r.tab).map(([k, r]) => link(k, r)).join('');
 
   const si = semInfo();
@@ -38,8 +40,14 @@ function render(opts = {}) {
   const r = ROUTES[currentRoute];
   const view = $('#view');
   view.innerHTML = r.render();
-  $('#pageTitle').textContent = r.title;
+  const title = r.parent ? ROUTES[r.parent].title : r.title;
+  $('#pageTitle').textContent = title;
   document.title = `${r.title} · Ders Takip`;
+  if (currentRoute === 'calisma' && ui.studyFocus) {
+    const el = document.getElementById(`study-${ui.studyFocus}`);
+    ui.studyFocus = null;
+    if (el) setTimeout(() => window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 76, behavior: 'smooth' }), 60);
+  }
   renderNav();
   if (currentRoute === 'akademik') bindChart();
   if (opts.focus) view.focus({ preventScroll: true });
@@ -174,6 +182,28 @@ document.addEventListener('click', (e) => {
     case 'print': window.print(); break;
     case 'lock': if (window.lockApp) window.lockApp(); break;
     case 'syncNow': Sync.run(); break;
+    case 'studyDone':
+    case 'studyReview': {
+      const w = Number(el.dataset.w);
+      const m = toggleStudy(el.dataset.code, w, act === 'studyDone' ? 'd' : 'r');
+      if (act === 'studyDone' && m.d) toast('Konu çalışıldı olarak işaretlendi');
+      if (act === 'studyReview' && m.r) toast('Tekrar listesine eklendi');
+      refresh();
+      break;
+    }
+    case 'studyScope': ui.studyScopeSel = el.dataset.scope; render(); break;
+    case 'studyExpand': {
+      const owners = studyOwners().map((c) => c.code);
+      if (ui.studyOpen.size >= owners.length) ui.studyOpen.clear(); else owners.forEach((c) => ui.studyOpen.add(c));
+      render();
+      break;
+    }
+    case 'gotoStudy':
+      ui.studyOpen.add(el.dataset.code);
+      ui.studyFocus = el.dataset.code;
+      drawerPushed = false;
+      location.hash = 'calisma';
+      break;
     case 'install': {
       const p = window.installPrompt;
       if (!p) { location.hash = 'ayarlar'; break; }
@@ -382,6 +412,13 @@ setInterval(() => {
   const busy = document.activeElement && document.activeElement.matches('input, textarea, select');
   if (!busy && !openCode && (currentRoute === 'bugun' || currentRoute === 'program')) render();
 }, 30000);
+
+// Açılan/kapanan ders kartlarını yeniden çizimlerde koru ("toggle" olayı kabarcıklanmaz, yakalama evresinde dinle)
+document.addEventListener('toggle', (e) => {
+  const d = e.target;
+  if (!(d instanceof HTMLDetailsElement) || !d.dataset.study) return;
+  if (d.open) ui.studyOpen.add(d.dataset.study); else ui.studyOpen.delete(d.dataset.study);
+}, true);
 
 /* ============ Uygulama kurulumu ve bağlantı ============ */
 window.addEventListener('kurulabilir', () => { if (currentRoute === 'bugun' || currentRoute === 'ayarlar') render(); });

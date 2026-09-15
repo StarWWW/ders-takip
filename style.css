@@ -601,3 +601,78 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
 }
 .toast-wrap { width: calc(100% - 32px); max-width: 520px; }
 .toast { max-width: 100%; }
+
+/* ============ Çalışma ============ */
+.study-tabs { margin-bottom: 4px; }
+.study-tabs a { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; min-height: 36px; border-radius: 8px; font-weight: 650; font-size: 14px; color: var(--text-2); text-decoration: none; }
+.study-tabs a svg { font-size: 16px; }
+.study-tabs a:hover { color: var(--text); }
+.study-tabs a[aria-current="page"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm), 0 0 0 1px var(--border); }
+.study-tabs .n { font-size: 11.5px; font-weight: 700; padding: 0 6px; border-radius: 99px; background: var(--surface-3); color: var(--text-2); }
+.study-tabs .n.late { background: var(--danger-soft); color: var(--danger); }
+.study-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; margin-top: 16px; align-items: start; }
+.ss-big { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 10px; }
+.ss-big b { font-size: 36px; font-weight: 800; letter-spacing: -.035em; line-height: 1; }
+.ss-big span { color: var(--text-2); font-size: 14px; }
+.tw-list { display: flex; flex-direction: column; gap: 6px; }
+.tw-row { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--c-bg); border-left: 3px solid var(--c-bd); }
+.tw-main { min-width: 0; }
+.tw-course { font-size: 12px; font-weight: 650; color: var(--text-2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tw-course .dot { width: 7px; height: 7px; }
+.tw-topic { font-weight: 650; font-size: 14px; line-height: 1.35; }
+.study-list { display: flex; flex-direction: column; gap: 10px; }
+.study-course { overflow: hidden; padding: 0; }
+.study-course > summary { list-style: none; display: grid; grid-template-columns: auto minmax(0, 1fr) 140px auto; gap: 12px; align-items: center; padding: 14px 16px; cursor: pointer; }
+.study-course > summary::-webkit-details-marker { display: none; }
+.study-course > summary .dot { width: 12px; height: 12px; }
+.study-course > summary .chev { color: var(--text-3); transition: transform .2s var(--ease); }
+.study-course[open] > summary .chev { transform: rotate(180deg); }
+.study-course[open] > summary { border-bottom: 1px solid var(--border); background: color-mix(in oklab, var(--c-bg) 60%, transparent); }
+.sc-name { font-weight: 700; font-size: 15px; line-height: 1.3; }
+.sc-sub { font-size: 12.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.sc-body { padding: 8px 16px 16px; }
+.sc-note { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
+.topics { list-style: none; margin: 0; padding: 0; }
+.topic { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 10px 6px; border-bottom: 1px dashed var(--border); border-radius: 8px; }
+.topic:last-child { border-bottom: 0; }
+.topic .check { margin-top: 2px; }
+.topic.cur { background: color-mix(in srgb, var(--primary) 7%, transparent); border-bottom-color: transparent; }
+.topic.behind .wk { color: var(--warn); }
+.topic.done .topic-title { color: var(--text-3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text-3) 60%, transparent); }
+.topic-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--text-3); }
+.topic-meta .wk { font-weight: 700; color: var(--text-2); }
+.topic-meta .badge { font-size: 11px; padding: 0 7px; }
+.topic-title { font-weight: 650; font-size: 14.5px; line-height: 1.4; margin-top: 2px; }
+.topic-prep { font-size: 12.5px; color: var(--text-3); margin-top: 3px; }
+.topic-divider { list-style: none; display: flex; align-items: center; gap: 10px; margin: 8px 0; font-size: 12px; font-weight: 700; color: var(--info); text-transform: uppercase; letter-spacing: .05em; }
+.topic-divider::before, .topic-divider::after { content: ""; flex: 1; border-top: 1.5px dashed color-mix(in srgb, var(--info) 45%, transparent); }
+.flag { width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text-3); display: grid; place-items: center; padding: 0; font-size: 15px; transition: all .15s var(--ease); }
+.flag:hover { color: var(--warn); border-color: var(--warn); }
+.flag.on { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+.flag.on svg { fill: currentColor; }
+.sc-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 20px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.sc-info .lbl { font-size: 12px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+.eval-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.sources { margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-2); display: grid; gap: 4px; }
+.sc-more { margin-top: 12px; font-size: 13.5px; color: var(--text-2); }
+.sc-more > summary { cursor: pointer; font-weight: 650; color: var(--primary); font-size: 13.5px; padding: 4px 0; }
+.sc-more p { margin: 8px 0; line-height: 1.55; }
+.sc-src { margin: 12px 0 0; }
+.sc-src a { display: inline-flex; align-items: center; gap: 4px; }
+.grade-inputs { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)) !important; }
+@media (max-width: 1024px) {
+  .study-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .study-course > summary { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .study-course > summary .sc-prog { grid-column: 2 / 3; grid-row: 2; }
+  .sc-sub { white-space: normal; }
+  .topic { gap: 10px; padding: 10px 2px; }
+  .study-tabs { display: flex; }
+  .study-tabs a { flex: 1; justify-content: center; }
+}
+.topic .check, .tw-row .check { width: 28px; height: 28px; }
+@media (max-width: 760px) {
+  .topic .check, .tw-row .check { width: 32px; height: 32px; border-radius: 9px; }
+  .flag { width: 36px; height: 36px; }
+}

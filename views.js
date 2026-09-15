@@ -180,6 +180,10 @@ function viewToday() {
           </div>`).join('')}
         <div class="help" style="margin-top:10px">Yoklamayı programdaki ✓ / ✕ düğmeleriyle işaretle. Sınırlar: teori %${state.settings.theoryLimit}, lab %${state.settings.labLimit}.</div>
       </section>
+      ${studyOwners().length && !si.after ? (() => { const tw = thisWeekRows(4); return `<section class="card card-pad">
+        <div class="card-h"><h3 class="card-t">${icon('bookOpen')}Bu hafta çalış</h3><a class="link-btn" href="#calisma">Konular ${icon('arrow')}</a></div>
+        ${tw.allDone ? `<div class="callout ok">${icon('check')}<div>${tw.wk}. haftanın bütün konularını çalıştın.</div></div>` : `<div class="tw-list">${tw.html}</div><div class="help" style="margin-top:8px">${tw.wk}. hafta · ${tw.done}/${tw.total} konu tamam</div>`}
+      </section>`; })() : ''}
       <section class="card card-pad">
         <div class="card-h"><h3 class="card-t">${icon('tasks')}Yaklaşanlar</h3><a class="link-btn" href="#ajanda">${icon('plus')}Ekle</a></div>
         ${upcoming.length ? upcoming.map(taskRow).join('') : `<div class="empty" style="padding:14px">${icon('tasks')}<div>Sınav, ödev veya proje ekleyerek takibe başla.</div></div>`}
@@ -414,6 +418,11 @@ function drawerHtml(c) {
   const si = semInfo(), W = state.settings.weeks;
   const cf = conflictsOfCourse(c.code, conflicts);
   const tasks = state.tasks.filter((t) => t.course === c.code);
+  const gp = gradeParts(c);
+  const owner = studyOwner(c), topics = studyTopics(c);
+  const curWk = clamp(weekOf(now()), 1, W);
+  const curTopic = topics.find((h) => h.h === curWk);
+  const vStats = topics.length ? studyStats(c, 'vize') : null, aStats = topics.length ? studyStats(c, 'tum') : null;
 
   const weeks = ss.map((s) => {
     const cells = Array.from({ length: W }, (_, i) => i + 1).map((w) => {
@@ -447,6 +456,17 @@ function drawerHtml(c) {
     ${cf.map((x) => { const o = courseByCode[x.a.code === c.code ? x.b.code : x.a.code]; return `<div class="callout ${x.sev === 'kritik' ? 'danger' : x.sev === 'dikkat' ? 'warn' : 'info'}">${icon('alert')}<div><b>${DAYS[x.d]} ${SLOTS[x.from][0]}–${SLOTS[x.to][1]}</b> saatinde <b>${esc(o.name)}</b> ile çakışıyor. ${conflictAdvice(x)}</div></div>`; }).join('')}
     ${!needsAttendance(c) ? `<div class="callout info">${icon('info')}<div>Bu dersi <b>alttan</b> alıyorsun; devam şartını daha önce sağladığın için derse devam zorunluluğun olmaması beklenir. Sınavlara girmen yeterli olabilir — danışmanınla teyit et.</div></div>` : ''}
 
+    ${topics.length ? `<section class="card card-pad">
+      <div class="card-h"><h3 class="card-t">${icon('bookOpen')}Çalışılacak konular</h3><button type="button" class="link-btn" data-act="gotoStudy" data-code="${owner.code}">Tümü ${icon('arrow')}</button></div>
+      ${owner !== c ? `<p class="help" style="margin:-6px 0 10px">${esc(owner.name)} dersiyle ortak konular.</p>` : ''}
+      <div class="row wrap" style="gap:14px;margin-bottom:10px">
+        <div style="flex:1;min-width:140px"><div class="help">Vize konuları</div><b>${vStats.done}/${vStats.total}</b>${progressBar(vStats.total ? (vStats.done / vStats.total) * 100 : 0, 'x')}</div>
+        <div style="flex:1;min-width:140px"><div class="help">Tüm dönem</div><b>${aStats.done}/${aStats.total}</b>${progressBar(aStats.total ? (aStats.done / aStats.total) * 100 : 0, 'x')}</div>
+      </div>
+      ${curTopic ? `<div class="tw-row c" style="${cstyle(owner)}">${studyCheck(owner.code, curWk, true)}<div class="tw-main"><div class="tw-course">${curWk}. hafta · bu hafta</div><div class="tw-topic">${esc(curTopic.konu)}</div></div></div>` : ''}
+      ${evalChips(c) ? `<div style="margin-top:10px">${evalChips(c)}</div>` : ''}
+    </section>` : ''}
+
     <section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('shield')}Devamsızlık</h3>
         <span class="badge ${st.lvl === 'danger' ? 'b-danger' : st.lvl === 'warn' ? 'b-warn' : st.lvl === 'ok' ? 'b-ok' : 'b-neutral'}">${!needsAttendance(c) ? 'Takip isteğe bağlı' : st.lvl === 'danger' ? 'Sınır aşıldı' : `${Math.max(st.left, 0)} saat hakkın kaldı`}</span></div>
@@ -461,10 +481,11 @@ function drawerHtml(c) {
     </section>
 
     <section class="card card-pad">
-      <div class="card-h"><h3 class="card-t">${icon('target')}Not hesaplama</h3><span class="help">Vize %${state.settings.vizeW} · Final %${100 - state.settings.vizeW}</span></div>
+      <div class="card-h"><h3 class="card-t">${icon('target')}Not hesaplama</h3><span class="help">${gp.official ? 'Bilgi paketindeki oranlar' : 'Varsayılan oranlar'}</span></div>
       <div class="grade-inputs">
-        ${['vize', 'final', 'but'].map((f) => `<div class="field"><label for="g-${f}">${f === 'but' ? 'Bütünleme' : f[0].toLocaleUpperCase('tr') + f.slice(1)}</label><input id="g-${f}" class="input" type="number" inputmode="numeric" min="0" max="100" placeholder="—" value="${esc(state.grades[c.code]?.[f] ?? '')}" data-input="grade" data-code="${c.code}" data-field="${f}"></div>`).join('')}
+        ${[...gp.parts, { key: 'but', label: 'Bütünleme', pct: null }].map((p) => `<div class="field"><label for="g-${p.key}">${esc(p.label)}${p.pct != null ? ` <span class="muted">%${p.pct}</span>` : ''}</label><input id="g-${p.key}" class="input" type="number" inputmode="numeric" min="0" max="100" placeholder="—" value="${esc(state.grades[c.code]?.[p.key] ?? '')}" data-input="grade" data-code="${c.code}" data-field="${p.key}"></div>`).join('')}
       </div>
+      ${gp.parts.some((p) => p.count > 1) ? '<p class="help" style="margin:8px 0 0">Birden fazla olan bileşenlerde ortalamasını gir.</p>' : ''}
       <div id="gradeOut" style="margin-top:12px">${gradeOutHtml(c)}</div>
     </section>
 
@@ -494,13 +515,156 @@ function drawerHtml(c) {
 
 function gradeOutHtml(c) {
   const g = gradeCalc(c.code);
-  if (g.v == null) return `<div class="help">Vize notunu girdiğinde finalden kaç alman gerektiğini hesaplarım.</div>`;
+  if (g.missing.length) {
+    return `<div class="help">${g.anyEntered ? `Finalden kaç alman gerektiğini hesaplamak için ${g.missing.map(esc).join(', ')} notunu da gir.` : `${g.parts.filter((p) => p.key !== 'final').map((p) => esc(p.label)).join(' ve ')} notlarını girdiğinde finalden kaç alman gerektiğini hesaplarım.`}</div>`;
+  }
   const needs = ['DD', 'CC', 'BB', 'AA'].map((L) => {
     const n = g.need(L);
     return `<div class="info"><div class="k">${L} için final</div><div class="v">${n > 100 ? '<span class="muted">Mümkün değil</span>' : n}</div></div>`;
   }).join('');
   return `${g.avg != null ? `<div class="grade-out"><div><div class="help">Ortalama</div><div class="avg">${g.avg}</div></div><span class="letter ${gradeClass(g.letter)}">${g.letter}</span><div class="help" style="flex:1;min-width:160px">${g.b != null ? 'Bütünleme notu finalin yerine sayıldı. ' : ''}Tahmini harf; bağıl değerlendirmede değişebilir.</div></div>` : ''}
     <div class="info-grid" style="margin-top:10px;grid-template-columns:repeat(4,minmax(0,1fr))">${needs}</div>`;
+}
+
+/* ============ ÇALIŞMA ============ */
+const BOLOGNA_URL = (id) => `https://obs.osmaniye.edu.tr/oibs/bologna/progCourseDetails.aspx?curCourse=${encodeURIComponent(id)}&lang=tr`;
+if (!ui.studyOpen) ui.studyOpen = new Set();
+
+function studyTabsHtml(active) {
+  const overdue = state.tasks.filter((t) => !t.done && t.date && daysBetween(now(), parseDate(t.date)) < 0).length;
+  const open = state.tasks.filter((t) => !t.done).length;
+  return `<nav class="seg study-tabs" aria-label="Çalışma bölümleri">
+    <a href="#calisma" ${active === 'calisma' ? 'aria-current="page"' : ''}>${icon('bookOpen')}Konular</a>
+    <a href="#ajanda" ${active === 'ajanda' ? 'aria-current="page"' : ''}>${icon('tasks')}Ajanda${open ? `<span class="n ${overdue ? 'late' : ''}">${open}</span>` : ''}</a>
+  </nav>`;
+}
+function studyScope() {
+  if (ui.studyScopeSel) return ui.studyScopeSel;
+  return weekOf(now()) < state.settings.midtermWeek ? 'vize' : 'tum';
+}
+function weekLabel(w) {
+  return fmtDate(dateOfWeekDay(w, 0), { day: 'numeric', month: 'short' });
+}
+function studyDoneBtn(code, h) {
+  const m = studyMark(code, h) || {};
+  return `<button type="button" class="check ${m.d ? 'on' : ''}" data-act="studyDone" data-code="${code}" data-w="${h}" aria-pressed="${!!m.d}" aria-label="${h}. hafta konusunu çalıştım olarak işaretle" title="Çalıştım">${icon('check')}</button>`;
+}
+function studyFlagBtn(code, h) {
+  const m = studyMark(code, h) || {};
+  return `<button type="button" class="flag ${m.r ? 'on' : ''}" data-act="studyReview" data-code="${code}" data-w="${h}" aria-pressed="${!!m.r}" aria-label="${h}. hafta konusunu tekrar edilecek olarak işaretle" title="Tekrar et">${icon('bookmark')}</button>`;
+}
+const studyCheck = (code, h, compact) => studyDoneBtn(code, h) + (compact ? '' : studyFlagBtn(code, h));
+function topicRow(c, h) {
+  const owner = studyOwner(c).code, m = studyMark(owner, h.h) || {};
+  const cur = weekOf(now());
+  const isCur = h.h === cur, behind = !m.d && h.h < cur;
+  const prep = [h.hazirlik, h.dokuman].filter(Boolean).filter((x) => !/^sınav$/i.test(x)).join(' · ');
+  return `<li class="topic ${isCur ? 'cur' : ''} ${behind ? 'behind' : ''} ${m.d ? 'done' : ''}">
+    ${studyDoneBtn(owner, h.h)}
+    <div class="topic-main">
+      <div class="topic-meta"><span class="wk">${h.h}. hafta</span><span>${weekLabel(h.h)}</span>${isCur ? '<span class="badge b-primary">Bu hafta</span>' : ''}${h.sinav ? '<span class="badge b-info">Sınav haftası</span>' : ''}${m.r ? `<span class="badge b-warn">${icon('bookmark')}Tekrar</span>` : ''}</div>
+      <div class="topic-title">${esc(h.konu)}</div>
+      ${prep ? `<div class="topic-prep">${esc(prep)}</div>` : ''}
+    </div>
+    ${studyFlagBtn(owner, h.h)}
+  </li>`;
+}
+function evalChips(c) {
+  const { official, parts } = gradeParts(c);
+  if (!official) return '';
+  return `<div class="eval-chips">${parts.map((p) => `<span class="badge b-neutral">${esc(p.label)}${p.count > 1 ? ` ×${p.count}` : ''} %${p.pct}</span>`).join('')}</div>`;
+}
+function studyCourseHtml(c, scope) {
+  const st = c.study, stats = studyStats(c, scope);
+  const list = studyScopeTopics(c, scope);
+  const mw = state.settings.midtermWeek;
+  const pct = stats.total ? (stats.done / stats.total) * 100 : 0;
+  const labs = COURSES.filter((x) => x.study?.ortak === c.code);
+  const open = ui.studyOpen.has(c.code);
+  let rows = '';
+  list.forEach((h) => {
+    if (scope === 'tum' && h.h === mw) rows += `<li class="topic-divider"><span>Vize · ${mw}. hafta civarı</span></li>`;
+    rows += topicRow(c, h);
+  });
+  const next = studyTopics(c).find((h) => !studyMark(c.code, h.h)?.d);
+  return `<details class="study-course c card" style="${cstyle(c)}" id="study-${c.code}" data-study="${c.code}" ${open ? 'open' : ''}>
+    <summary>
+      <i class="dot"></i>
+      <div class="sc-head">
+        <div class="sc-name">${esc(c.name)} <span class="mono muted">${c.code}</span></div>
+        <div class="sc-sub">${stats.total ? `${stats.done}/${stats.total} konu` : 'Konu yok'}${stats.review ? ` · <span style="color:var(--warn)">${stats.review} tekrar</span>` : ''}${stats.behind && scope !== 'tekrar' ? ` · ${stats.behind} geride` : ''}${next && scope !== 'tekrar' ? ` · Sıradaki: ${esc(next.konu)}` : ''}</div>
+      </div>
+      <div class="sc-prog">${progressBar(pct, pct >= 100 ? 'ok' : 'x')}</div>
+      ${icon('chevron', 'chev')}
+    </summary>
+    <div class="sc-body">
+      ${labs.length ? `<p class="help sc-note">${icon('flask')} ${labs.map((l) => esc(l.name)).join(', ')} bu dersle aynı konuları izliyor; ilerleme ortak tutulur.</p>` : ''}
+      ${list.length ? `<ol class="topics">${rows}</ol>` : `<div class="empty" style="padding:14px">${scope === 'tekrar' ? 'Tekrar için işaretlediğin konu yok.' : 'Bu kapsamda konu yok.'}</div>`}
+      <div class="sc-info">
+        ${gradeParts(c).official ? `<div><div class="lbl">Değerlendirme</div>${evalChips(c)}</div>` : ''}
+        ${st.kaynaklar?.length ? `<div><div class="lbl">Kaynaklar</div><ul class="sources">${st.kaynaklar.map((k) => `<li>${esc(k)}</li>`).join('')}</ul></div>` : ''}
+      </div>
+      <details class="sc-more">
+        <summary>Dersin amacı, içeriği ve kazanımları</summary>
+        ${st.amac ? `<p><b>Amaç.</b> ${esc(st.amac)}</p>` : ''}
+        ${st.icerik ? `<p><b>İçerik.</b> ${esc(st.icerik)}</p>` : ''}
+        ${st.ciktilar?.length ? `<p><b>Bu dersi bitirince:</b></p><ul class="sources">${st.ciktilar.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+      </details>
+      <p class="help sc-src">${st.not ? `${esc(st.not)} ` : ''}Kaynak: OKÜ Bologna bilgi paketi (${esc(st.kaynak.kod)}, ${esc(st.kaynak.yil)} müfredatı${st.kaynak.guncelleme ? `, güncelleme ${esc(st.kaynak.guncelleme)}` : ''}) · <a href="${BOLOGNA_URL(st.kaynak.id)}" target="_blank" rel="noopener noreferrer">Bilgi paketini aç ${icon('external')}</a></p>
+    </div>
+  </details>`;
+}
+function thisWeekRows(limit) {
+  const wk = clamp(weekOf(now()), 1, state.settings.weeks), d = dayIdx(now());
+  const todayCodes = new Set(d <= 4 ? daySessions(d).map((s) => studyOwner(courseByCode[s.code]).code) : []);
+  const items = studyOwners().map((c) => ({ c, h: studyTopics(c).find((x) => x.h === wk) })).filter((x) => x.h)
+    .sort((a, b) => (studyMark(a.c.code, wk)?.d ? 1 : 0) - (studyMark(b.c.code, wk)?.d ? 1 : 0) || (todayCodes.has(b.c.code) ? 1 : 0) - (todayCodes.has(a.c.code) ? 1 : 0));
+  const done = items.filter((x) => studyMark(x.c.code, wk)?.d).length;
+  const shown = limit ? items.filter((x) => !studyMark(x.c.code, wk)?.d).slice(0, limit) : items;
+  const html = shown.map(({ c, h }) => `<div class="tw-row c" style="${cstyle(c)}">
+      ${studyCheck(c.code, wk, true)}
+      <div class="tw-main"><div class="tw-course"><i class="dot"></i>${esc(c.name)}${todayCodes.has(c.code) ? ' <span class="badge b-primary">Bugün derste</span>' : ''}</div><div class="tw-topic">${esc(h.konu)}</div></div>
+    </div>`).join('');
+  return { wk, done, total: items.length, html, allDone: items.length > 0 && done === items.length };
+}
+
+function viewStudy() {
+  const scope = studyScope();
+  const si = semInfo(), mw = state.settings.midtermWeek;
+  const owners = studyOwners();
+  if (!owners.length) {
+    return `${studyTabsHtml('calisma')}<div class="card empty" style="margin-top:16px;padding:40px">${icon('bookOpen')}<div>Ders konuları bulunamadı.</div></div>`;
+  }
+  const agg = owners.reduce((a, c) => { const s = studyStats(c, scope); a.total += s.total; a.done += s.done; a.review += s.review; a.behind += s.behind; return a; }, { total: 0, done: 0, review: 0, behind: 0 });
+  const allReview = owners.reduce((a, c) => a + studyStats(c, 'tekrar').total, 0);
+  const tw = thisWeekRows(0);
+  const scopes = [['vize', `Vize konuları (1–${mw - 1}. hafta)`], ['tum', 'Tüm dönem'], ['tekrar', `Tekrar edilecekler${allReview ? ` (${allReview})` : ''}`]];
+  const pct = agg.total ? (agg.done / agg.total) * 100 : 0;
+  return `
+  ${studyTabsHtml('calisma')}
+  <div class="study-grid">
+    <section class="card card-pad study-summary">
+      <div class="card-h"><h3 class="card-t">${icon('target')}${scope === 'vize' ? 'Vize hazırlığı' : scope === 'tekrar' ? 'Tekrar listesi' : 'Dönem hazırlığı'}</h3><span class="badge b-neutral">${si.inSem ? `${si.wk}. hafta` : si.before ? 'Dönem başlamadı' : 'Dönem bitti'}</span></div>
+      <div class="ss-big"><b>${agg.done}</b><span>/ ${agg.total} konu çalışıldı</span></div>
+      ${progressBar(pct, pct >= 100 ? 'ok' : 'x')}
+      <div class="row wrap" style="gap:6px;margin-top:12px">
+        ${agg.behind && scope !== 'tekrar' ? `<span class="badge b-warn">${agg.behind} konu geride</span>` : ''}
+        ${agg.review ? `<span class="badge b-neutral">${icon('bookmark')}${agg.review} tekrar bekliyor</span>` : ''}
+        ${scope === 'vize' ? `<span class="badge b-info">Vize ${mw}. hafta civarı · ${fmtDate(dateOfWeekDay(mw, 0), { day: 'numeric', month: 'long' })}</span>` : ''}
+      </div>
+      <p class="help" style="margin:12px 0 0">"Geride": derste işlenmiş ama henüz çalıştım olarak işaretlemediğin konular. Vize haftasını Ayarlar'dan değiştirebilirsin.</p>
+    </section>
+    ${si.after ? '' : `<section class="card card-pad">
+      <div class="card-h"><h3 class="card-t">${icon('calendar')}Bu haftanın konuları</h3><span class="badge ${tw.allDone ? 'b-ok' : 'b-neutral'}">${tw.done}/${tw.total}</span></div>
+      <div class="tw-list">${tw.html}</div>
+    </section>`}
+  </div>
+  <div class="filters" style="margin:18px 0 12px">
+    ${scopes.map(([k, l]) => `<button type="button" class="fchip" data-act="studyScope" data-scope="${k}" aria-pressed="${scope === k}">${l}</button>`).join('')}
+    <button type="button" class="link-btn" style="margin-left:auto" data-act="studyExpand">${ui.studyOpen.size >= owners.length ? 'Tümünü daralt' : 'Tümünü aç'}</button>
+  </div>
+  <div class="study-list">${owners.map((c) => studyCourseHtml(c, scope)).join('')}</div>
+  <p class="help" style="margin-top:14px">Konular OKÜ Bologna bilgi paketinden alındı; hocan dönem içinde sırayı değiştirebilir. Laboratuvarlar teorik dersle aynı konuları izlediğinde ilerleme ortak tutulur.</p>`;
 }
 
 /* ============ AJANDA ============ */
@@ -536,9 +700,10 @@ function viewTasks() {
   ];
   const done = state.tasks.filter((t) => t.done);
   return `
-  <section class="card card-pad">
+  ${studyTabsHtml('ajanda')}
+  <section class="card card-pad" style="margin-top:16px">
     <form class="task-form" data-form="task">
-      <div class="field"><label for="tTitle">Başlık</label><input id="tTitle" class="input" name="title" placeholder="Örn. Veri Yapıları vizesi" required></div>
+      <div class="field"><label for="tTitle">Başlık</label><input id="tTitle" class="input" name="title" placeholder="Örn. 1. ödev teslimi" required></div>
       <div class="field"><label for="tCourse">Ders</label><select id="tCourse" class="select input" name="course"><option value="">Genel</option>${COURSES.map((c) => `<option value="${c.code}">${c.code} · ${esc(c.name)}</option>`).join('')}</select></div>
       <div class="field"><label for="tType">Tür</label><select id="tType" class="select input" name="type">${TASK_TYPES.map((t) => `<option>${t}</option>`).join('')}</select></div>
       <div class="field"><label for="tDate">Tarih</label><input id="tDate" class="input" type="date" name="date"></div>
@@ -779,6 +944,7 @@ function viewSettings() {
       <div class="grid" style="grid-template-columns:1fr 1fr">
         <div class="field"><label for="sStart">Derslerin başladığı gün</label><input id="sStart" class="input" type="date" value="${s.start}" data-input="setting" data-key="start"></div>
         <div class="field"><label for="sWeeks">Hafta sayısı</label><input id="sWeeks" class="input" type="number" min="1" max="20" value="${s.weeks}" data-input="setting" data-key="weeks" data-num></div>
+        <div class="field"><label for="sMid">Vize haftası</label><input id="sMid" class="input" type="number" min="2" max="20" value="${s.midtermWeek}" data-input="setting" data-key="midtermWeek" data-num></div>
       </div>
       <p class="help" style="margin:10px 0 0">Dönemin ilk haftasının herhangi bir günü olabilir. Hafta sayacı ve yoklama tabloları buna göre hesaplanır.</p>
     </section>
@@ -792,7 +958,8 @@ function viewSettings() {
     </section>
     <section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('target')}Not değerlendirme</h3></div>
-      <div class="field" style="max-width:220px"><label for="sVize">Vize ağırlığı (%) — final ${100 - s.vizeW}%</label><input id="sVize" class="input" type="number" min="0" max="100" value="${s.vizeW}" data-input="setting" data-key="vizeW" data-num></div>
+      <p class="help" style="margin:0 0 10px">Derslerin çoğunda not, bilgi paketindeki resmi oranlarla hesaplanır. Bu ağırlık yalnızca oranı bilinmeyen derslerde kullanılır.</p>
+      <div class="field" style="max-width:260px"><label for="sVize">Varsayılan vize ağırlığı (%) — final ${100 - s.vizeW}%</label><input id="sVize" class="input" type="number" min="0" max="100" value="${s.vizeW}" data-input="setting" data-key="vizeW" data-num></div>
       <div class="lbl help" style="margin:14px 0 6px;font-weight:650">Harf notu alt sınırları (tahmin için)</div>
       <div class="scale-grid">${LETTERS.slice(0, 8).map((L, i) => `<div class="field"><label for="sc${i}">${L} ≥</label><input id="sc${i}" class="input" type="number" min="0" max="100" value="${s.scale[i]}" data-input="scale" data-i="${i}"></div>`).join('')}</div>
     </section>
