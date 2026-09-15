@@ -176,12 +176,17 @@ document.addEventListener('click', (e) => {
       break;
     case 'optimize':
       { const prev = { ...state.sections };
-        state.sections = { ...OPTIMAL }; save(); refresh();
+        state.sections = { ...getOptimal() }; save(); refresh();
         toast('En az çakışmalı şube düzeni uygulandı', { label: 'Geri al', fn: () => { state.sections = prev; save(); refresh(); } }); }
       break;
     case 'print': window.print(); break;
     case 'lock': if (window.lockApp) window.lockApp(); break;
     case 'syncNow': Sync.run(); break;
+    case 'repeatRule':
+      state.settings.repeatAttendance = el.dataset.rule === 'yonetmelik' ? 'yonetmelik' : 'bolum';
+      save(); refresh();
+      toast(el.dataset.rule === 'yonetmelik' ? 'Alttan derslerde devam şartı aranmıyor (yönetmelik md. 20)' : 'Tüm derslerde devam zorunlu (bölüm kararı)');
+      break;
     case 'studyDone':
     case 'studyReview': {
       const w = Number(el.dataset.w);
@@ -260,7 +265,7 @@ document.addEventListener('click', (e) => {
     }
     case 'reset':
       if (confirm('Tüm yoklama, not, görev ve ayarların silinecek. Emin misin?')) {
-        state = defaultState(); state.sections = { ...(OFFICIAL_SECTIONS ? { ...OPTIMAL, ...OFFICIAL_SECTIONS } : OPTIMAL) };
+        state = defaultState(); delete state.migrated; state.sections = { ...(OFFICIAL_SECTIONS ? { ...getOptimal(), ...OFFICIAL_SECTIONS } : getOptimal()) };
         if (OFFICIAL_SECTIONS) state.appliedDataSections = JSON.stringify(OFFICIAL_SECTIONS);
         save(); applyTheme(); refresh(); toast('Veriler sıfırlandı');
       }
@@ -337,8 +342,9 @@ document.addEventListener('change', (e) => {
       const k = el.dataset.key;
       if (el.hasAttribute('data-num')) {
         const v = Number(el.value);
+        if (el.value === '' && el.hasAttribute('data-optional')) { state.settings[k] = null; save(); render(); toast('Ayar temizlendi'); break; }
         if (el.value === '' || isNaN(v)) { render(); break; }
-        state.settings[k] = k === 'weeks' ? clamp(Math.round(v), 1, 20) : clamp(v, 0, 100);
+        state.settings[k] = k === 'weeks' ? clamp(Math.round(v), 1, 20) : k === 'midtermWeek' ? clamp(Math.round(v), 2, 20) : clamp(v, 0, 100);
       } else if (el.value) state.settings[k] = el.value;
       save(); render(); toast('Ayar kaydedildi');
       break;
@@ -355,7 +361,8 @@ document.addEventListener('change', (e) => {
         const data = JSON.parse(txt);
         if (!data || typeof data !== 'object' || !('attendance' in data)) throw new Error('bad');
         state = sanitizeState(data);
-        if (!state.sections) state.sections = { ...OPTIMAL };
+        delete state.migrated;
+        if (!state.sections) state.sections = { ...getOptimal() };
         save(); applyTheme(); refresh(); toast('Yedek yüklendi');
       }).catch(() => toast('Dosya okunamadı — geçerli bir yedek seç'));
       break;

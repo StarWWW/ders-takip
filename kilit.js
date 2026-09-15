@@ -28,6 +28,12 @@
     window.TRANSCRIPT = data.transcript;
     window.DATA_SECTIONS = data.sections || null;
     window.SYNC_CONFIG = data.sync || null;
+    window.TAKVIM = data.takvim || null;
+    window.KURALLAR = data.kurallar || {};
+    window.KAYNAKLAR = data.kaynaklar || [];
+    window.UNIVERSITE = data.universite || null;
+    window.MUFREDAT_YARIYIL = data.mufredatYariyil || {};
+    window.DERS_NOTLARI = data.dersNotlari || {};
     window.DATA_KEY = key || null; // eşitleme verisini şifrelemek için (dışarı aktarılamaz CryptoKey)
     $('#lock').hidden = true;
     $('#app').hidden = false;

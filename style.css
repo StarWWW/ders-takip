@@ -676,3 +676,20 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
   .topic .check, .tw-row .check { width: 32px; height: 32px; border-radius: 9px; }
   .flag { width: 36px; height: 36px; }
 }
+
+/* ============ Takvim, tatil ve kaynaklar ============ */
+.tt-holiday { position: absolute; left: 0; right: 0; z-index: 3; display: grid; place-items: center; padding: 6px; text-align: center; font-size: 12px; font-weight: 700; color: var(--text-2);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--bg) 88%, transparent) 0 8px, color-mix(in srgb, var(--surface-3) 88%, transparent) 8px 10px); }
+.tt-holiday span { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; }
+.att-cell.holiday { cursor: default; border-style: solid; background: var(--surface-2); color: var(--text-3); }
+.att-cell.holiday svg { margin-top: 6px; font-size: 14px; stroke-width: 2; }
+.task.event { grid-template-columns: auto 1fr auto; }
+.ev-ic { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-size: 15px; background: var(--surface-2); color: var(--text-2); }
+.ev-sinav { background: var(--info-soft); color: var(--info); }
+.ev-tatil { background: var(--ok-soft); color: var(--ok); }
+.ev-kayit { background: var(--warn-soft); color: var(--warn); }
+.sources-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.sources-list li { padding: 10px 0; border-top: 1px dashed var(--border); font-size: 14px; }
+.sources-list li:first-child { border-top: 0; padding-top: 0; }
+.sources-list a { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.callout a { color: inherit; font-weight: 700; }

@@ -7,6 +7,26 @@ function daySessions(d) {
   return allSessions().filter((s) => s.d === d)
     .sort((a, b) => a.from - b.from || needsAttendance(courseByCode[b.code]) - needsAttendance(courseByCode[a.code]));
 }
+// Belirli bir tarihteki oturumlar (resmi tatile denk gelenler hariç)
+function dateSessions(date) {
+  const d = dayIdx(date);
+  return d > 4 ? [] : daySessions(d).filter((s) => !sessionHoliday(date, s));
+}
+const fmtRange = (e) => (e.bas === e.bit ? fmtDate(parseDate(e.bas), { day: 'numeric', month: 'long' })
+  : `${fmtDate(parseDate(e.bas), { day: 'numeric', month: 'short' })} – ${fmtDate(parseDate(e.bit), { day: 'numeric', month: 'short' })}`);
+const EVENT_ICON = { sinav: 'target', tatil: 'coffee', kayit: 'note', donem: 'flag' };
+function eventRow(e) {
+  const n = now(), started = e.bas <= isoDate(n), left = daysBetween(n, parseDate(started ? e.bit : e.bas));
+  const rel = started ? (left === 0 ? 'Bugün bitiyor' : `Sürüyor · ${left} gün kaldı`) : left === 0 ? 'Bugün' : left === 1 ? 'Yarın' : `${left} gün sonra`;
+  return `<div class="task event">
+    <div class="ev-ic ev-${e.tur}" aria-hidden="true">${icon(EVENT_ICON[e.tur] || 'calendar')}</div>
+    <div style="min-width:0">
+      <div class="tt-title">${esc(e.ad)}</div>
+      <div class="tt-meta"><span class="badge b-neutral">${e.tur === 'tatil' ? 'Resmi tatil' : 'Akademik takvim'}</span><span>${fmtRange(e)}</span><span class="badge ${started || left <= 3 ? 'b-warn' : 'b-neutral'}">${icon('clock')}${rel}</span></div>
+    </div>
+    <span></span>
+  </div>`;
+}
 function semInfo(n = now()) {
   const wk = weekOf(n), W = state.settings.weeks;
   return { wk, W, before: wk < 1, after: wk > W, inSem: wk >= 1 && wk <= W };
@@ -14,7 +34,7 @@ function semInfo(n = now()) {
 function alisBadge(c) {
   if (c.alis === 'Zorunlu') return `<span class="badge b-primary">${icon('shield')}Devam zorunlu</span>`;
   if (c.alis === 'Devamlı Alttan') return `<span class="badge b-warn">${icon('repeat')}Devamlı alttan</span>`;
-  return `<span class="badge b-neutral" title="Devam şartı daha önce sağlandığı için devam zorunluluğu olmaması beklenir">${icon('repeat')}Alttan</span>`;
+  return `<span class="badge b-neutral" title="${repeatRule() === 'bolum' ? 'Bölüm kurulu kararıyla bu derste de devam zorunlu' : 'Yönetmelik md. 20: devam şartı aranmaz; ara sınav ve yarıyıl içi etkinliklere katılım zorunlu'}">${icon('repeat')}Alttan</span>`;
 }
 function sectionLabel(sec) { return sec ? `Şube ${sec}` : 'Tek şube'; }
 function conflictMap(list) {
@@ -33,8 +53,8 @@ function nextClass(n = now()) {
   for (let i = 0; i < 21; i++) {
     const date = addDays(from, i), d = dayIdx(date);
     if (d > 4 || weekOf(date) > state.settings.weeks) continue;
-    const isToday = daySessions(d) && daysBetween(n, date) === 0;
-    for (const s of daySessions(d)) if (!isToday || sm(s) > mins) return { s, date };
+    const isToday = daysBetween(n, date) === 0;
+    for (const s of dateSessions(date)) if (!isToday || sm(s) > mins) return { s, date };
   }
   return null;
 }
@@ -56,11 +76,14 @@ function greeting(h) { return h < 5 ? 'İyi geceler' : h < 12 ? 'Günaydın' : h
 function heroHtml() {
   const n = now(), mins = minutesOfDay(n), d = dayIdx(n), si = semInfo(n);
   if (si.after) {
-    return `<section class="hero neutral"><div class="hero-k">${icon('flag')} Dönem tamamlandı</div>
-      <div class="hero-name">${state.settings.weeks} haftalık dönem bitti</div>
-      <div class="hero-meta"><span>Final ve bütünleme notlarını Akademik sekmesinden gir.</span></div></section>`;
+    const ev = calendarEvents().filter((e) => e.tur === 'sinav' && e.bit >= isoDate(n))[0];
+    return `<section class="hero neutral"><div class="hero-k">${icon('flag')} Güz yarıyılı eğitimi tamamlandı</div>
+      <div class="hero-name">${ev ? esc(ev.ad) : 'Sınav dönemi'}</div>
+      <div class="hero-meta">${ev ? `<span>${icon('calendar')}${fmtRange(ev)}</span>` : ''}<span>Sınav programı bölüm tarafından en az iki hafta önce ilan edilir (yönetmelik md. 21).</span></div></section>`;
   }
-  const cur = si.inSem && d <= 4 ? daySessions(d).filter((s) => sm(s) <= mins && mins < em(s)) : [];
+  const hol = si.inSem && d <= 4 ? holidayOn(n) : null;
+  const todays = si.inSem ? dateSessions(startOfDay(n)) : [];
+  const cur = todays.filter((s) => sm(s) <= mins && mins < em(s));
   if (cur.length) {
     const s = cur[0], c = courseByCode[s.code];
     const left = em(s) - mins, pct = ((mins - sm(s)) / (em(s) - sm(s))) * 100;
@@ -76,6 +99,11 @@ function heroHtml() {
     </section>`;
   }
   const nx = nextClass(n);
+  if (hol && !todays.some((s) => sm(s) > mins)) {
+    return `<section class="hero neutral"><div class="hero-k">${icon('coffee')} Resmi tatil</div>
+      <div class="hero-name">${esc(hol.ad)}</div>
+      <div class="hero-meta"><span>${hol.saat ? `${hol.saat}'ten sonra ders yapılmaz.` : 'Bugün ders yapılmaz.'}</span>${nx ? `<span>${icon('clock')}Sıradaki: ${esc(courseByCode[nx.s.code].name)} · ${fmtDate(nx.date, { weekday: 'long' })} ${SLOTS[nx.s.from][0]}</span>` : ''}</div></section>`;
+  }
   if (!nx) {
     return `<section class="hero neutral"><div class="hero-k">${icon('coffee')} Ders yok</div><div class="hero-name">Yakında planlanmış ders bulunmuyor</div></section>`;
   }
@@ -101,9 +129,11 @@ function timelineHtml(date, conflicts) {
   const n = now(), d = dayIdx(date), isToday = daysBetween(n, date) === 0, mins = minutesOfDay(n);
   const week = weekOf(date), canMark = week >= 1 && week <= state.settings.weeks && daysBetween(n, date) <= 0;
   const cmap = conflictMap(conflicts);
-  const list = daySessions(d);
-  if (!list.length) return `<div class="empty">${icon('coffee')}<div>Bu gün ders yok</div></div>`;
-  return `<div class="timeline">${list.map((s) => {
+  const list = dateSessions(date);
+  const hol = holidayOn(date);
+  const holNote = hol ? `<div class="callout info" style="margin-bottom:12px">${icon('coffee')}<div><b>${esc(hol.ad)}</b> — ${hol.saat ? `${hol.saat}'ten sonraki dersler yapılmaz` : 'resmi tatil, ders yapılmaz'}.</div></div>` : '';
+  if (!list.length) return `${holNote}<div class="empty">${icon('coffee')}<div>Bu gün ders yok</div></div>`;
+  return `${holNote}<div class="timeline">${list.map((s) => {
     const c = courseByCode[s.code];
     const st = isToday ? (em(s) <= mins ? 'past' : sm(s) <= mins ? 'now' : '') : '';
     const sev = cmap.get(`${s.code}|${s.d}|${s.from}`);
@@ -124,17 +154,21 @@ function viewToday() {
   const n = now(), d = dayIdx(n), si = semInfo(n);
   const conflicts = findConflicts(state.sections);
   const nx = nextClass(n);
-  const showToday = si.inSem && d <= 4 && daySessions(d).length;
+  const showToday = si.inSem && d <= 4 && (dateSessions(startOfDay(n)).length || holidayOn(n));
   const tDate = showToday ? startOfDay(n) : nx ? nx.date : null;
   const tTitle = !tDate ? 'Program' : daysBetween(n, tDate) === 0 ? 'Bugünün programı' : daysBetween(n, tDate) === 1 ? 'Yarının programı' : `${fmtDate(tDate, { weekday: 'long' })} programı`;
   const tSub = tDate ? fmtDate(tDate, { day: 'numeric', month: 'long' }) : '';
-  const hoursToday = d <= 4 ? daySessions(d).reduce((a, s) => a + hoursOf(s), 0) : 0;
+  const hoursToday = dateSessions(startOfDay(n)).reduce((a, s) => a + hoursOf(s), 0);
+  const budgets = conflicts.map((cf) => ({ cf, b: conflictBudget(cf) }));
+  const infeasible = budgets.filter((x) => !x.b.feasible);
+  const regEvent = activeEvents(n, 'kayit')[0];
+  const events = upcomingEvents(n, 45).filter((e) => e.tur !== 'donem' || e.bas >= isoDate(n)).slice(0, 3);
 
   const sevCount = { kritik: 0, dikkat: 0, dusuk: 0 };
   conflicts.forEach((c) => sevCount[c.sev]++);
 
   const req = COURSES.filter(needsAttendance).map((c) => ({ c, st: attStatus(c) })).sort((a, b) => b.st.ratio - a.st.ratio);
-  const upcoming = state.tasks.filter((t) => !t.done).sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')).slice(0, 4);
+  const upcoming = state.tasks.filter((t) => !t.done).sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')).slice(0, 3);
   const need = requiredDno(state.settings.targetGno);
   const sim = projection(state.sim);
 
@@ -142,8 +176,9 @@ function viewToday() {
   ${installBannerHtml()}
   <div class="hello">
     <h2>${greeting(n.getHours())}, ${esc(STUDENT.firstName)}</h2>
-    <p>${fmtDate(n, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · ${si.before ? `Dönem ${fmtDate(semesterStart(), { day: 'numeric', month: 'long' })} tarihinde başlıyor` : si.after ? 'Dönem sona erdi' : d <= 4 ? `Bugün ${hoursToday} saat dersin var` : 'Hafta sonu, iyi dinlen'}</p>
+    <p>${fmtDate(n, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · ${si.before ? `Dönem ${fmtDate(semesterStart(), { day: 'numeric', month: 'long' })} tarihinde başlıyor` : si.after ? 'Güz eğitimi sona erdi' : d > 4 ? 'Hafta sonu, iyi dinlen' : holidayOn(n) && !hoursToday ? 'Resmi tatil' : `Bugün ${hoursToday} saat dersin var`}</p>
   </div>
+  ${regEvent && infeasible.length ? `<div class="callout danger" style="margin-bottom:16px">${icon('alert')}<div><b>${esc(regEvent.ad)} ${fmtDate(parseDate(regEvent.bit), { day: 'numeric', month: 'long' })}'de bitiyor.</b> Seçtiğin derslerde ${infeasible.length} çakışmada iki dersin devam şartı aynı anda sağlanamıyor (${infeasible.map((x) => `${esc(courseByCode[x.cf.a.code].name)} × ${esc(courseByCode[x.cf.b.code].name)}`).join('; ')}). Süre dolmadan danışmanınla görüş. <a href="#program">Ayrıntılar</a></div></div>` : regEvent ? `<div class="callout info" style="margin-bottom:16px">${icon('note')}<div><b>${esc(regEvent.ad)}</b> ${fmtDate(parseDate(regEvent.bit), { day: 'numeric', month: 'long' })}'de bitiyor.</div></div>` : ''}
   <div class="dash">
     <div class="dash-col">
       ${heroHtml()}
@@ -167,7 +202,7 @@ function viewToday() {
             ${sevCount.dikkat ? `<span class="badge b-warn">${sevCount.dikkat} dikkat</span>` : ''}
             ${sevCount.dusuk ? `<span class="badge b-neutral">${sevCount.dusuk} düşük</span>` : ''}
           </div>
-          <div class="help">${sevCount.kritik ? 'Devam zorunlu iki ders aynı saatte — şube değiştirmeyi dene.' : 'Devam zorunlu derslerin birbiriyle çakışmıyor; çakışmalar alttan aldığın derslerle.'}</div>`
+          <div class="help">${infeasible.length ? `${infeasible.length} çakışmada iki dersin devamsızlık hakları toplamı çakışan saatlerden az; iki derste de devam şartını sağlamak mümkün değil.` : sevCount.kritik ? 'Devam zorunlu iki ders aynı saatte; devamsızlık haklarını dikkatli kullan.' : 'Devam zorunlu derslerin birbiriyle çakışmıyor.'} ${repeatRule() === 'bolum' ? 'Bölüm kurulu kararına göre tüm derslerde devam zorunlu.' : ''}</div>`
           : `<div class="callout ok">${icon('check')}<div>Hiç çakışma yok.</div></div>`}
       </section>
       <section class="card card-pad">
@@ -178,7 +213,7 @@ function viewToday() {
             <div class="num">${st.abs} / ${st.lim} sa${st.lvl === 'danger' ? ` <span class="badge b-danger">Aşıldı</span>` : st.lvl === 'warn' ? ` <span class="badge b-warn">Sınırda</span>` : ''}</div>
             ${progressBar(st.lim ? (st.abs / st.lim) * 100 : 0, st.lvl)}
           </div>`).join('')}
-        <div class="help" style="margin-top:10px">Yoklamayı programdaki ✓ / ✕ düğmeleriyle işaretle. Sınırlar: teori %${state.settings.theoryLimit}, lab %${state.settings.labLimit}.</div>
+        <div class="help" style="margin-top:10px">Yoklamayı programdaki ✓ / ✕ düğmeleriyle işaretle. Yönetmelik md. 20: derslere en az %70, uygulamalara en az %80 devam; resmi tatiller hesaba katılmaz.</div>
       </section>
       ${studyOwners().length && !si.after ? (() => { const tw = thisWeekRows(4); return `<section class="card card-pad">
         <div class="card-h"><h3 class="card-t">${icon('bookOpen')}Bu hafta çalış</h3><a class="link-btn" href="#calisma">Konular ${icon('arrow')}</a></div>
@@ -186,7 +221,8 @@ function viewToday() {
       </section>`; })() : ''}
       <section class="card card-pad">
         <div class="card-h"><h3 class="card-t">${icon('tasks')}Yaklaşanlar</h3><a class="link-btn" href="#ajanda">${icon('plus')}Ekle</a></div>
-        ${upcoming.length ? upcoming.map(taskRow).join('') : `<div class="empty" style="padding:14px">${icon('tasks')}<div>Sınav, ödev veya proje ekleyerek takibe başla.</div></div>`}
+        ${events.map(eventRow).join('')}
+        ${upcoming.length ? upcoming.map(taskRow).join('') : `<div class="empty" style="padding:14px">${icon('tasks')}<div>Vize tarihleri ilan edilince Ajanda'ya "Vize" olarak ekle.</div></div>`}
       </section>
       <section class="card card-pad">
         <div class="card-h"><h3 class="card-t">${icon('cap')}GNO hedefi</h3><a class="link-btn" href="#akademik">Simülatör ${icon('arrow')}</a></div>
@@ -194,7 +230,7 @@ function viewToday() {
           <div><div class="muted" style="font-size:12.5px;font-weight:650">Şu anki GNO</div><div class="v">${fmt2(CURRENT.gno)}</div></div>
           ${sim.count ? `<div class="arrow">${icon('arrow')}</div><div><div class="muted" style="font-size:12.5px;font-weight:650">Simülasyon</div><div class="v" style="color:var(--primary)">${fmt2(sim.gno)}</div></div>` : ''}
         </div>
-        <div class="callout info" style="margin-top:14px">${icon('target')}<div><b>${fmt2(state.settings.targetGno)}</b> GNO için bu dönem ortalaman en az <b>${fmt2(need)}</b> olmalı — yani derslerin ortalama <b>${nearestLetter(need)}</b> civarı.</div></div>
+        <div class="callout info" style="margin-top:14px">${icon('target')}<div><b>${fmt2(state.settings.targetGno)}</b> GNO için bu dönem ortalaman en az <b>${fmt2(need)}</b> olmalı; örneğin bütün derslerden en az <b>${nearestLetter(need)}</b> almak bunu sağlar.</div></div>
       </section>
     </div>
   </div>`;
@@ -252,7 +288,10 @@ function gridHtml(conflicts) {
     }).join('');
     const isToday = isCurWeek && d === today;
     const nowLine = isToday && mins >= DAY_START && mins <= DAY_END ? `<div class="tt-now" style="top:${yOf(mins)}px" aria-hidden="true"></div>` : '';
-    return `<div class="tt-day ${isToday ? 'today' : ''}" style="height:${H}px">${lines}${lunch}${blocks}${nowLine}</div>`;
+    const hol = holidayOn(dateOfWeekDay(dispWeek, d));
+    const holTop = hol?.saat ? yOf(toMin(hol.saat)) : 0;
+    const holBand = hol ? `<div class="tt-holiday" style="top:${holTop}px;height:${H - holTop}px"><span>${esc(hol.ad)}</span></div>` : '';
+    return `<div class="tt-day ${isToday ? 'today' : ''}" style="height:${H}px">${lines}${lunch}${blocks}${holBand}${nowLine}</div>`;
   }).join('');
 
   const heads = DAYS.map((day, d) => {
@@ -267,7 +306,7 @@ function gridHtml(conflicts) {
     </div>
     <div class="legend">
       <span><i class="lg-sw"></i>Devam zorunlu</span>
-      <span><i class="lg-sw dash"></i>Alttan (devam şartı yok*)</span>
+      <span><i class="lg-sw dash"></i>Alttan alınan ders</span>
       <span><i class="lg-sw lab"></i>Laboratuvar</span>
       <span><i class="lg-sw cf"></i>Çakışma (renk = önem)</span>
     </div>
@@ -283,7 +322,9 @@ function agendaHtml(conflicts) {
     const hasCf = conflicts.some((c) => c.d === d);
     return `<button type="button" data-act="day" data-day="${d}" aria-pressed="${ui.day === d}">${DAYS_SHORT[d]}<small>${fmtDate(dateOfWeekDay(dispWeek, d), { day: 'numeric' })}</small>${hasCf ? '<i class="cf-dot" aria-label="çakışma var"></i>' : ''}</button>`;
   }).join('');
-  const list = daySessions(ui.day);
+  const dayDate = dateOfWeekDay(dispWeek, ui.day);
+  const list = dateSessions(dayDate);
+  const dayHol = holidayOn(dayDate);
   let lunchShown = false;
   const items = list.map((s) => {
     const c = courseByCode[s.code];
@@ -303,22 +344,36 @@ function agendaHtml(conflicts) {
     </div>`;
   }).join('');
   return `<div class="agenda"><div class="day-tabs" role="group" aria-label="Gün seç">${tabs}</div>
-    <div class="card card-pad">${list.length ? `<div class="timeline">${items}</div>` : `<div class="empty">${icon('coffee')}<div>Bu gün ders yok</div></div>`}</div></div>`;
+    <div class="card card-pad">${dayHol ? `<div class="callout info" style="margin-bottom:12px">${icon('coffee')}<div><b>${esc(dayHol.ad)}</b> — ${dayHol.saat ? `${dayHol.saat}'ten sonra ders yok` : 'ders yok'}.</div></div>` : ''}${list.length ? `<div class="timeline">${items}</div>` : `<div class="empty">${icon('coffee')}<div>Bu gün ders yok</div></div>`}</div></div>`;
+}
+
+function attendanceRuleHtml(compact) {
+  const k = KURALLAR.devamKarari;
+  if (repeatRule() === 'bolum') {
+    return `<div class="callout warn" style="margin-bottom:12px">${icon('shield')}<div><b>Tüm derslerde devam zorunlu.</b> ${k ? `Bölüm Kurulu ${fmtDate(parseDate(k.tarih), { day: 'numeric', month: 'long', year: 'numeric' })} tarihli kararıyla 2025–2026 Bahar döneminden itibaren bölümdeki tüm derslerde devam zorunluluğu uygulanıyor; devam şartını sağlamayan öğrenci o dersten devamsızlık nedeniyle başarısız sayılıyor.` : ''}${compact ? '' : ' Yönetmelik (md. 20) tekrar alınan derslerde devam şartı aramasa da bölüm kararı alttan aldığın dersleri de kapsıyor. Uygulamayı danışmanına teyit ettirmen iyi olur; kural Ayarlar\'dan değiştirilebilir.'}${k?.url ? ` <a href="${esc(k.url)}" target="_blank" rel="noopener noreferrer">Duyuru ${icon('external')}</a>` : ''}</div></div>`;
+  }
+  return `<div class="callout info" style="margin-bottom:12px">${icon('shield')}<div><b>Yönetmelik md. 20 uygulanıyor:</b> derse devamını daha önce sağladığın alttan derslerde devam şartı aranmaz; ancak ara sınavlara ve nota katkısı olan tüm yarıyıl içi etkinliklere katılman zorunlu. ${k ? '<b>Dikkat:</b> bölüm kurulunun tüm derslerde devam zorunluluğu kararı var; bu seçim ona göre riskli olabilir.' : ''}</div></div>`;
 }
 
 function conflictAdvice(cf) {
   const A = courseByCode[cf.a.code], B = courseByCode[cf.b.code];
-  if (cf.sev === 'kritik') return `İki ders de devam zorunlu. Şube değiştirmeyi dene ya da danışmanınla görüş.`;
+  const b = conflictBudget(cf);
+  const math = `Dönem boyunca çakışan süre ${b.overlap} saat; devamsızlık hakların ${esc(A.name)} için ${b.limA}, ${esc(B.name)} için ${b.limB} saat.`;
+  if (cf.sev === 'kritik') {
+    return b.feasible
+      ? `İki ders de devam zorunlu. ${math} Bu çakışma için iki dersin haklarından toplam ${b.overlap} saat kullanman gerekir; iki derste birlikte ${b.limA + b.limB - b.overlap} saatlik başka devamsızlık hakkın kalır.`
+      : `<b>İki derste de devam şartı aynı anda sağlanamaz.</b> ${math} Şube değişikliği bu çakışmayı çözmüyorsa danışmanınla görüş.`;
+  }
   if (cf.sev === 'dikkat') {
     const req = needsAttendance(A) ? A : B, alt = req === A ? B : A;
-    return `<b>${esc(req.name)}</b> dersine git (devam zorunlu). <b>${esc(alt.name)}</b> alttan olduğu için bu saati notlardan telafi et.`;
+    return `<b>${esc(req.name)}</b> dersine git (devam zorunlu). <b>${esc(alt.name)}</b> için devam şartı yok ama ara sınav ve nota katkısı olan etkinliklere katılman gerekir (yönetmelik md. 20).`;
   }
-  return `İki ders de alttan; hangisine gideceğini seç, diğerini kaynaktan çalış.`;
+  return `İki derste de devam şartı yok (yönetmelik md. 20); ara sınavlara ve nota katkısı olan etkinliklere katılman yeterli.`;
 }
 
 function viewProgram() {
   const conflicts = findConflicts(state.sections);
-  const isOptimal = COURSES.filter(hasSections).every((c) => state.sections[c.code] === OPTIMAL[c.code]);
+  const isOptimal = COURSES.filter(hasSections).every((c) => state.sections[c.code] === getOptimal()[c.code]);
   const totalCfHours = conflicts.reduce((a, c) => a + c.hours, 0);
   const crit = conflicts.filter((c) => c.sev === 'kritik').length;
 
@@ -326,7 +381,7 @@ function viewProgram() {
     const cur = state.sections[c.code];
     return `<div class="sec-item c" style="${cstyle(c)}">
       <div class="top"><i class="dot"></i><span class="nm">${esc(c.name)}</span></div>
-      <div class="seg" role="group" aria-label="${esc(c.name)} şubesi">${secKeys(c).map((k) => `<button type="button" data-act="sec" data-code="${c.code}" data-sec="${k}" aria-pressed="${cur === k}" title="${OPTIMAL[c.code] === k ? 'Önerilen şube' : ''}">${k}${OPTIMAL[c.code] === k ? '<i class="rec" aria-label="önerilen"></i>' : ''}</button>`).join('')}</div>
+      <div class="seg" role="group" aria-label="${esc(c.name)} şubesi">${secKeys(c).map((k) => `<button type="button" data-act="sec" data-code="${c.code}" data-sec="${k}" aria-pressed="${cur === k}" title="${getOptimal()[c.code] === k ? 'Önerilen şube' : ''}">${k}${getOptimal()[c.code] === k ? '<i class="rec" aria-label="önerilen"></i>' : ''}</button>`).join('')}</div>
       <div class="when">${sessionsFor(c).map((s) => `${DAYS_SHORT[s.d]} <span class="mono">${timeRange(s)}</span>`).join(' · ')}</div>
     </div>`;
   }).join('');
@@ -355,6 +410,7 @@ function viewProgram() {
       <button type="button" class="btn btn-sm" data-act="print">Yazdır</button>
     </div>
   </div>
+  ${attendanceRuleHtml(false)}
   ${gridHtml(conflicts)}
   ${agendaHtml(conflicts)}
   <h2 class="section-t">Şube seçimi</h2>
@@ -364,7 +420,7 @@ function viewProgram() {
   <div class="sec-panel">${secPanel}</div>
   <h2 class="section-t">Çakışmalar ve öneriler</h2>
   <div class="conf-list">${confList}</div>
-  <p class="help" style="margin-top:14px">* "Alttan" dersler için devam şartı daha önce sağlandığından devam zorunluluğu olmaması beklenir; "Devamlı alttan" dersler ise devam gerektirir. Yönetmeliği veya danışmanını kontrol et.</p>`;
+  <p class="help" style="margin-top:14px">Devamsızlık hakları yönetmelik md. 20'ye göre (derslere %70, uygulamalara %80 devam) ${state.settings.weeks} haftalık dönemin gerçek ders saatlerinden, resmi tatiller çıkarılarak hesaplanır. Ders saatleri ve derslikler bölümün 07.09.2026 tarihli ders programından alınmıştır.</p>`;
 }
 
 /* ============ DERSLER ============ */
@@ -374,7 +430,7 @@ function courseCard(c, conflicts) {
   const worst = cf.some((x) => x.sev === 'kritik') ? 'b-danger' : cf.some((x) => x.sev === 'dikkat') ? 'b-warn' : 'b-neutral';
   const att = needsAttendance(c)
     ? `<div class="att"><div class="row"><span>Devamsızlık</span><b style="color:var(--text)">${st.abs} / ${st.lim} saat</b></div>${progressBar(st.lim ? (st.abs / st.lim) * 100 : 0, st.lvl)}</div>`
-    : `<div class="att"><div class="row"><span>Devam şartı yok*</span><span>${st.present + st.abs ? `${st.present} sa katıldın` : ''}</span></div></div>`;
+    : `<div class="att"><div class="row"><span>Devam şartı yok (md. 20)</span><span>${st.present + st.abs ? `${st.present} sa katıldın` : ''}</span></div></div>`;
   return `<article class="ccard c" style="${cstyle(c)}" data-act="open" data-code="${c.code}" role="button" tabindex="0" aria-label="${esc(c.name)} detayını aç">
     <div class="top"><span class="chip-code">${c.code}</span>${alisBadge(c)}${c.lab ? `<span class="badge b-neutral">${icon('flask')}Lab</span>` : ''}${cf.length ? `<span class="badge ${worst}">${icon('alert')}${cf.length}</span>` : ''}</div>
     <h3>${esc(c.name)}</h3>
@@ -408,7 +464,7 @@ function viewCourses() {
     <label class="search"><span class="sr">Ders ara</span>${icon('search')}<input class="input" type="search" placeholder="Ders, kod veya hoca ara" value="${esc(ui.q)}" data-input="search"></label>
   </div>
   <div class="course-grid" id="courseGrid">${list.length ? list.map((c) => courseCard(c, conflicts)).join('') : `<div class="empty">${icon('search')}<div>Eşleşen ders yok</div></div>`}</div>
-  <p class="help" style="margin-top:14px">* Alttan derslerde devam şartı genellikle aranmaz; yine de katıldığın saatleri işaretleyebilirsin.</p>`;
+  ${attendanceRuleHtml(true)}`;
 }
 
 /* ============ Ders detayı (çekmece) ============ */
@@ -429,6 +485,8 @@ function drawerHtml(c) {
       const v = getAtt(c.code, w, s);
       const date = dateOfWeekDay(w, s.d);
       const future = daysBetween(now(), date) > 0;
+      const hol = sessionHoliday(date, s);
+      if (hol) return `<span class="att-cell holiday" title="${w}. hafta, ${esc(hol.ad)}: ders yok" aria-label="${w}. hafta, resmi tatil"><span class="wn">${w}</span>${icon('coffee')}</span>`;
       const lbl = `${w}. hafta, ${fmtDate(date, { day: 'numeric', month: 'long' })}: ${v === 'var' ? 'katıldım' : v === 'yok' ? 'katılmadım' : 'işaretlenmedi'}`;
       return `<button type="button" class="att-cell ${v || ''} ${future ? 'future' : ''} ${si.wk === w ? 'cur' : ''}" data-act="attcycle" data-code="${c.code}" data-w="${w}" data-d="${s.d}" data-from="${s.from}" data-to="${s.to}" aria-label="${lbl}" title="${lbl}">
         <span class="wn">${w}</span>${v === 'var' ? icon('check') : v === 'yok' ? icon('x') : ''}</button>`;
@@ -450,17 +508,20 @@ function drawerHtml(c) {
       <div class="info"><div class="k">AKTS</div><div class="v">${c.akts}</div></div>
       <div class="info span3"><div class="k">Ders saatleri</div>
         ${ss.map((s) => `<div class="v row wrap" style="gap:8px;margin-top:4px"><span>${DAYS[s.d]}</span><span class="mono">${timeRange(s)}</span><span class="muted" style="font-weight:600">${icon('pin')} ${esc(s.room)}</span></div>`).join('')}
-        ${hasSections(c) ? `<div style="margin-top:10px" class="row wrap"><span class="k">Şube${SECTIONS_KNOWN ? '' : ' (henüz açıklanmadı)'}</span><div class="seg" role="group" aria-label="Şube">${secKeys(c).map((k) => `<button type="button" data-act="sec" data-code="${c.code}" data-sec="${k}" aria-pressed="${state.sections[c.code] === k}">${k}${OPTIMAL[c.code] === k ? '<i class="rec" aria-label="önerilen"></i>' : ''}</button>`).join('')}</div></div>` : ''}
+        ${hasSections(c) ? `<div style="margin-top:10px" class="row wrap"><span class="k">Şube${SECTIONS_KNOWN ? '' : ' (henüz açıklanmadı)'}</span><div class="seg" role="group" aria-label="Şube">${secKeys(c).map((k) => `<button type="button" data-act="sec" data-code="${c.code}" data-sec="${k}" aria-pressed="${state.sections[c.code] === k}">${k}${getOptimal()[c.code] === k ? '<i class="rec" aria-label="önerilen"></i>' : ''}</button>`).join('')}</div></div>` : ''}
       </div>
     </div>
     ${cf.map((x) => { const o = courseByCode[x.a.code === c.code ? x.b.code : x.a.code]; return `<div class="callout ${x.sev === 'kritik' ? 'danger' : x.sev === 'dikkat' ? 'warn' : 'info'}">${icon('alert')}<div><b>${DAYS[x.d]} ${SLOTS[x.from][0]}–${SLOTS[x.to][1]}</b> saatinde <b>${esc(o.name)}</b> ile çakışıyor. ${conflictAdvice(x)}</div></div>`; }).join('')}
-    ${!needsAttendance(c) ? `<div class="callout info">${icon('info')}<div>Bu dersi <b>alttan</b> alıyorsun; devam şartını daha önce sağladığın için derse devam zorunluluğun olmaması beklenir. Sınavlara girmen yeterli olabilir — danışmanınla teyit et.</div></div>` : ''}
+    ${c.uyari ? `<div class="callout warn">${icon('pin')}<div>${esc(c.uyari)}</div></div>` : ''}
+    ${c.alis === 'Alttan' ? (repeatRule() === 'bolum'
+      ? `<div class="callout warn">${icon('shield')}<div>Bu dersi <b>alttan</b> alıyorsun. Yönetmelik (md. 20) tekrar alınan derslerde devam şartı aramaz; ancak bölüm kurulu kararıyla bölümdeki tüm derslerde devam zorunlu. Devamsızlığını buna göre takip et.</div></div>`
+      : `<div class="callout info">${icon('info')}<div>Bu dersi <b>alttan</b> alıyorsun. Yönetmelik md. 20'ye göre devam şartı aranmaz; ama ara sınavlara ve nota katkısı olan tüm yarıyıl içi etkinliklere katılman zorunlu.</div></div>`) : ''}
 
     ${topics.length ? `<section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('bookOpen')}Çalışılacak konular</h3><button type="button" class="link-btn" data-act="gotoStudy" data-code="${owner.code}">Tümü ${icon('arrow')}</button></div>
       ${owner !== c ? `<p class="help" style="margin:-6px 0 10px">${esc(owner.name)} dersiyle ortak konular.</p>` : ''}
       <div class="row wrap" style="gap:14px;margin-bottom:10px">
-        <div style="flex:1;min-width:140px"><div class="help">Vize konuları</div><b>${vStats.done}/${vStats.total}</b>${progressBar(vStats.total ? (vStats.done / vStats.total) * 100 : 0, 'x')}</div>
+        <div style="flex:1;min-width:140px"><div class="help">${vizeInfo(c) ? `Vize konuları (${vizeInfo(c).date ? fmtDate(parseDate(vizeInfo(c).date), { day: 'numeric', month: 'short' }) : `${vizeInfo(c).week}. hafta`} öncesi)` : 'Vize tarihi girilmedi'}</div><b>${vStats.done}/${vStats.total}</b>${progressBar(vStats.total ? (vStats.done / vStats.total) * 100 : 0, 'x')}</div>
         <div style="flex:1;min-width:140px"><div class="help">Tüm dönem</div><b>${aStats.done}/${aStats.total}</b>${progressBar(aStats.total ? (aStats.done / aStats.total) * 100 : 0, 'x')}</div>
       </div>
       ${curTopic ? `<div class="tw-row c" style="${cstyle(owner)}">${studyCheck(owner.code, curWk, true)}<div class="tw-main"><div class="tw-course">${curWk}. hafta · bu hafta</div><div class="tw-topic">${esc(curTopic.konu)}</div></div></div>` : ''}
@@ -474,8 +535,9 @@ function drawerHtml(c) {
       ${progressBar(st.lim ? (st.abs / st.lim) * 100 : 0, st.lvl)}
       <div class="row wrap" style="margin:14px 0 10px;gap:8px">
         <label class="field" style="flex-direction:row;align-items:center;gap:8px"><span class="lbl">Devamsızlık sınırı %</span><input class="input" style="width:84px;min-height:36px" type="number" min="0" max="100" value="${limitPct(c)}" data-input="limit" data-code="${c.code}"></label>
-        <span class="help">Toplam ${totalHours(c)} saat (${c.tu} sa × ${W} hafta)</span>
+        <span class="help">Toplam ${totalHours(c)} saat (${W} hafta, resmi tatiller hariç)</span>
       </div>
+      ${c.devamNot ? `<p class="help" style="margin:0 0 10px">${esc(c.devamNot)}</p>` : ''}
       <div class="help" style="margin-bottom:10px">Hafta kutusuna dokun: boş → <span style="color:var(--ok);font-weight:700">katıldım</span> → <span style="color:var(--danger);font-weight:700">katılmadım</span> → boş.</div>
       <div class="att-grid">${weeks}</div>
     </section>
@@ -486,6 +548,7 @@ function drawerHtml(c) {
         ${[...gp.parts, { key: 'but', label: 'Bütünleme', pct: null }].map((p) => `<div class="field"><label for="g-${p.key}">${esc(p.label)}${p.pct != null ? ` <span class="muted">%${p.pct}</span>` : ''}</label><input id="g-${p.key}" class="input" type="number" inputmode="numeric" min="0" max="100" placeholder="—" value="${esc(state.grades[c.code]?.[p.key] ?? '')}" data-input="grade" data-code="${c.code}" data-field="${p.key}"></div>`).join('')}
       </div>
       ${gp.parts.some((p) => p.count > 1) ? '<p class="help" style="margin:8px 0 0">Birden fazla olan bileşenlerde ortalamasını gir.</p>' : ''}
+      <p class="help" style="margin:8px 0 0">Finale girebilmek için ara sınava girmiş olman ve devam şartını sağlaman gerekir (yönetmelik md. 23). Bütünleme notu finalin yerine geçer; devamsızlıktan kalınan derste bütünlemeye girilemez (md. 21).</p>
       <div id="gradeOut" style="margin-top:12px">${gradeOutHtml(c)}</div>
     </section>
 
@@ -522,12 +585,13 @@ function gradeOutHtml(c) {
     const n = g.need(L);
     return `<div class="info"><div class="k">${L} için final</div><div class="v">${n > 100 ? '<span class="muted">Mümkün değil</span>' : n}</div></div>`;
   }).join('');
-  return `${g.avg != null ? `<div class="grade-out"><div><div class="help">Ortalama</div><div class="avg">${g.avg}</div></div><span class="letter ${gradeClass(g.letter)}">${g.letter}</span><div class="help" style="flex:1;min-width:160px">${g.b != null ? 'Bütünleme notu finalin yerine sayıldı. ' : ''}Tahmini harf; bağıl değerlendirmede değişebilir.</div></div>` : ''}
+  return `${g.avg != null ? `<div class="grade-out"><div><div class="help">Ham başarı notu</div><div class="avg">${g.avg.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</div></div><span class="letter ${gradeClass(g.letter)}">${g.letter}</span><div class="help" style="flex:1;min-width:160px">${g.b != null ? 'Bütünleme notu finalin yerine sayıldı. ' : ''}Harf, yönetmelik md. 24'teki mutlak değerlendirme tablosuna göredir. Hoca bağıl değerlendirme kullanırsa harf notu sınıfın dağılımına göre verilir.${g.avg % 1 && state.settings.scale.some((t) => Math.abs(t - g.avg) < 1) ? ' Tablo tam sayı aralıkları verir; küsuratın yuvarlanıp yuvarlanmadığı yönetmelikte yazmadığı için sınırdaki notlarda harf farklı çıkabilir.' : ''}</div></div>` : ''}
     <div class="info-grid" style="margin-top:10px;grid-template-columns:repeat(4,minmax(0,1fr))">${needs}</div>`;
 }
 
 /* ============ ÇALIŞMA ============ */
-const BOLOGNA_URL = (id) => `https://obs.osmaniye.edu.tr/oibs/bologna/progCourseDetails.aspx?curCourse=${encodeURIComponent(id)}&lang=tr`;
+const BOLOGNA_URL = (id) => (window.UNIVERSITE?.bologna ? `${window.UNIVERSITE.bologna}${encodeURIComponent(id)}` : '');
+const UNI = () => window.UNIVERSITE?.kisaAd || '';
 if (!ui.studyOpen) ui.studyOpen = new Set();
 
 function studyTabsHtml(active) {
@@ -540,7 +604,8 @@ function studyTabsHtml(active) {
 }
 function studyScope() {
   if (ui.studyScopeSel) return ui.studyScopeSel;
-  return weekOf(now()) < state.settings.midtermWeek ? 'vize' : 'tum';
+  const anyVize = studyOwners().some((c) => vizeInfo(c));
+  return anyVize && studyOwners().some((c) => { const v = vizeInfo(c); return v && weekOf(now()) < v.week; }) ? 'vize' : 'tum';
 }
 function weekLabel(w) {
   return fmtDate(dateOfWeekDay(w, 0), { day: 'numeric', month: 'short' });
@@ -577,13 +642,13 @@ function evalChips(c) {
 function studyCourseHtml(c, scope) {
   const st = c.study, stats = studyStats(c, scope);
   const list = studyScopeTopics(c, scope);
-  const mw = state.settings.midtermWeek;
+  const vz = vizeInfo(c), mw = vz?.week;
   const pct = stats.total ? (stats.done / stats.total) * 100 : 0;
   const labs = COURSES.filter((x) => x.study?.ortak === c.code);
   const open = ui.studyOpen.has(c.code);
   let rows = '';
   list.forEach((h) => {
-    if (scope === 'tum' && h.h === mw) rows += `<li class="topic-divider"><span>Vize · ${mw}. hafta civarı</span></li>`;
+    if (scope === 'tum' && mw && h.h === mw) rows += `<li class="topic-divider"><span>Vize · ${vz.date ? fmtDate(parseDate(vz.date), { day: 'numeric', month: 'long' }) : `${mw}. hafta`}</span></li>`;
     rows += topicRow(c, h);
   });
   const next = studyTopics(c).find((h) => !studyMark(c.code, h.h)?.d);
@@ -599,6 +664,7 @@ function studyCourseHtml(c, scope) {
     </summary>
     <div class="sc-body">
       ${labs.length ? `<p class="help sc-note">${icon('flask')} ${labs.map((l) => esc(l.name)).join(', ')} bu dersle aynı konuları izliyor; ilerleme ortak tutulur.</p>` : ''}
+      ${scope === 'vize' && !vz ? `<p class="help sc-note">${icon('info')} Bu dersin vize tarihi girilmedi; tüm konular gösteriliyor.</p>` : ''}
       ${list.length ? `<ol class="topics">${rows}</ol>` : `<div class="empty" style="padding:14px">${scope === 'tekrar' ? 'Tekrar için işaretlediğin konu yok.' : 'Bu kapsamda konu yok.'}</div>`}
       <div class="sc-info">
         ${gradeParts(c).official ? `<div><div class="lbl">Değerlendirme</div>${evalChips(c)}</div>` : ''}
@@ -610,7 +676,7 @@ function studyCourseHtml(c, scope) {
         ${st.icerik ? `<p><b>İçerik.</b> ${esc(st.icerik)}</p>` : ''}
         ${st.ciktilar?.length ? `<p><b>Bu dersi bitirince:</b></p><ul class="sources">${st.ciktilar.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
       </details>
-      <p class="help sc-src">${st.not ? `${esc(st.not)} ` : ''}Kaynak: OKÜ Bologna bilgi paketi (${esc(st.kaynak.kod)}, ${esc(st.kaynak.yil)} müfredatı${st.kaynak.guncelleme ? `, güncelleme ${esc(st.kaynak.guncelleme)}` : ''}) · <a href="${BOLOGNA_URL(st.kaynak.id)}" target="_blank" rel="noopener noreferrer">Bilgi paketini aç ${icon('external')}</a></p>
+      <p class="help sc-src">${st.not ? `${esc(st.not)} ` : ''}Kaynak: ${esc(UNI())} Bologna bilgi paketi (${esc(st.kaynak.kod)}, ${esc(st.kaynak.yil)} müfredatı${st.kaynak.guncelleme ? `, güncelleme ${esc(st.kaynak.guncelleme)}` : ''}) · ${BOLOGNA_URL(st.kaynak.id) ? `<a href="${esc(BOLOGNA_URL(st.kaynak.id))}" target="_blank" rel="noopener noreferrer">Bilgi paketini aç ${icon('external')}</a>` : ''}</p>
     </div>
   </details>`;
 }
@@ -630,15 +696,16 @@ function thisWeekRows(limit) {
 
 function viewStudy() {
   const scope = studyScope();
-  const si = semInfo(), mw = state.settings.midtermWeek;
+  const si = semInfo();
   const owners = studyOwners();
+  const vizeKnown = owners.filter((c) => vizeInfo(c)).length;
   if (!owners.length) {
     return `${studyTabsHtml('calisma')}<div class="card empty" style="margin-top:16px;padding:40px">${icon('bookOpen')}<div>Ders konuları bulunamadı.</div></div>`;
   }
   const agg = owners.reduce((a, c) => { const s = studyStats(c, scope); a.total += s.total; a.done += s.done; a.review += s.review; a.behind += s.behind; return a; }, { total: 0, done: 0, review: 0, behind: 0 });
   const allReview = owners.reduce((a, c) => a + studyStats(c, 'tekrar').total, 0);
   const tw = thisWeekRows(0);
-  const scopes = [['vize', `Vize konuları (1–${mw - 1}. hafta)`], ['tum', 'Tüm dönem'], ['tekrar', `Tekrar edilecekler${allReview ? ` (${allReview})` : ''}`]];
+  const scopes = [['vize', `Vize konuları${vizeKnown ? '' : ' (tarih girilmedi)'}`], ['tum', 'Tüm dönem'], ['tekrar', `Tekrar edilecekler${allReview ? ` (${allReview})` : ''}`]];
   const pct = agg.total ? (agg.done / agg.total) * 100 : 0;
   return `
   ${studyTabsHtml('calisma')}
@@ -650,9 +717,9 @@ function viewStudy() {
       <div class="row wrap" style="gap:6px;margin-top:12px">
         ${agg.behind && scope !== 'tekrar' ? `<span class="badge b-warn">${agg.behind} konu geride</span>` : ''}
         ${agg.review ? `<span class="badge b-neutral">${icon('bookmark')}${agg.review} tekrar bekliyor</span>` : ''}
-        ${scope === 'vize' ? `<span class="badge b-info">Vize ${mw}. hafta civarı · ${fmtDate(dateOfWeekDay(mw, 0), { day: 'numeric', month: 'long' })}</span>` : ''}
+        <span class="badge ${vizeKnown ? 'b-info' : 'b-neutral'}">Vize tarihi girilen ders: ${vizeKnown}/${owners.length}</span>
       </div>
-      <p class="help" style="margin:12px 0 0">"Geride": derste işlenmiş ama henüz çalıştım olarak işaretlemediğin konular. Vize haftasını Ayarlar'dan değiştirebilirsin.</p>
+      <p class="help" style="margin:12px 0 0">"Geride": derste işlenmiş ama henüz çalıştım olarak işaretlemediğin konular. ${esc(TAKVIM?.araSinavNotu || '')} İlan edilince Ajanda'ya dersin vizesini "Vize" türüyle ekle; o dersin vize konuları tarihe göre ayarlanır.</p>
     </section>
     ${si.after ? '' : `<section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('calendar')}Bu haftanın konuları</h3><span class="badge ${tw.allDone ? 'b-ok' : 'b-neutral'}">${tw.done}/${tw.total}</span></div>
@@ -664,7 +731,7 @@ function viewStudy() {
     <button type="button" class="link-btn" style="margin-left:auto" data-act="studyExpand">${ui.studyOpen.size >= owners.length ? 'Tümünü daralt' : 'Tümünü aç'}</button>
   </div>
   <div class="study-list">${owners.map((c) => studyCourseHtml(c, scope)).join('')}</div>
-  <p class="help" style="margin-top:14px">Konular OKÜ Bologna bilgi paketinden alındı; hocan dönem içinde sırayı değiştirebilir. Laboratuvarlar teorik dersle aynı konuları izlediğinde ilerleme ortak tutulur.</p>`;
+  <p class="help" style="margin-top:14px">Konular ${esc(UNI())} Bologna bilgi paketindeki 14 haftalık plandan alındı; akademik takvimde ${state.settings.weeks} eğitim haftası var ve hocan sırayı değiştirebilir. Laboratuvarlar teorik dersle aynı konuları izlediğinde ilerleme ortak tutulur.</p>`;
 }
 
 /* ============ AJANDA ============ */
@@ -699,6 +766,7 @@ function viewTasks() {
     ['Tarihsiz', open.filter((t) => !t.date)],
   ];
   const done = state.tasks.filter((t) => t.done);
+  const calEvents = calendarEvents().filter((e) => e.bit >= isoDate(n));
   return `
   ${studyTabsHtml('ajanda')}
   <section class="card card-pad" style="margin-top:16px">
@@ -712,7 +780,8 @@ function viewTasks() {
   </section>
   ${state.tasks.length === 0 ? `<div class="card empty" style="margin-top:16px;padding:40px">${icon('tasks')}<div style="font-weight:700;color:var(--text);margin-bottom:4px">Ajandan boş</div><div>Vize tarihlerini, ödevleri ve proje teslimlerini ekle; Bugün ekranında geri sayımı görürsün.</div></div>` : ''}
   ${groups.filter(([, l]) => l.length).map(([t, l]) => `<div class="task-group"><h3>${t}<span class="badge ${t === 'Gecikmiş' ? 'b-danger' : 'b-neutral'}">${l.length}</span></h3>${l.map(taskRow).join('')}</div>`).join('')}
-  ${done.length ? `<details class="task-group"><summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Tamamlanan (${done.length})</summary>${done.map(taskRow).join('')}</details>` : ''}`;
+  ${done.length ? `<details class="task-group"><summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Tamamlanan (${done.length})</summary>${done.map(taskRow).join('')}</details>` : ''}
+  ${calEvents.length ? `<div class="task-group"><h3>Akademik takvim<span class="badge b-neutral">${calEvents.length}</span></h3>${calEvents.map(eventRow).join('')}<p class="help">${esc(TAKVIM?.araSinavNotu || '')}</p></div>` : ''}`;
 }
 
 /* ============ AKADEMİK ============ */
@@ -733,7 +802,7 @@ function chartHtml(sim) {
   const y = (v) => T + ih - (v / maxY) * ih;
   const bw = Math.min(26, (iw / pts.length) * 0.34);
   const grid = [0, 1, 2, 3].map((v) => `<line x1="${L}" x2="${Wd - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)" stroke-width="1"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join('');
-  const thr = `<line x1="${L}" x2="${Wd - R}" y1="${y(2)}" y2="${y(2)}" stroke="var(--text-3)" stroke-width="1.2" stroke-dasharray="4 4"/><text x="${L + 6}" y="${y(2) - 6}" text-anchor="start" style="font-weight:600">2,00 eşiği</text>`;
+  const thr = `<line x1="${L}" x2="${Wd - R}" y1="${y(2)}" y2="${y(2)}" stroke="var(--text-3)" stroke-width="1.2" stroke-dasharray="4 4"/><text x="${L + 6}" y="${y(2) - 6}" text-anchor="start" style="font-weight:600">2,00 · mezuniyet şartı</text>`;
   const bars = pts.map((p, i) => `<rect x="${x(i) - bw / 2}" y="${y(p.dno ?? 0)}" width="${bw}" height="${Math.max(0, y(0) - y(p.dno ?? 0))}" rx="4" fill="var(--surface-3)" ${p.proj ? 'stroke="var(--border-strong)" stroke-dasharray="3 3"' : ''}/>`).join('');
   const real = pts.filter((p) => !p.proj);
   const path = real.map((p, i) => `${i ? 'L' : 'M'}${x(i)},${y(p.gno)}`).join(' ');
@@ -810,15 +879,17 @@ function viewAcademic() {
       <section class="card card-pad">
         <div class="card-h"><h3 class="card-t">${icon('flag')}Bu dönem dışında kalan dersler</h3><span class="badge b-neutral">${debts.length}</span></div>
         ${['Güz', 'Bahar'].map((sem) => {
-          const l = debts.filter((x) => (Number(x.code.slice(-1)) % 2 === 1) === (sem === 'Güz'));
-          return l.length ? `<div class="help" style="font-weight:700;margin:6px 0 4px">${sem} dönemi dersleri</div>${l.map((x) => `<div class="row between" style="padding:6px 0;border-top:1px dashed var(--border);font-size:14px"><span><span class="mono muted">${x.code}</span> ${esc(x.name)}</span><span class="row" style="gap:6px"><span class="muted" style="font-size:12px">${x.akts} AKTS</span><span class="g ${gradeClass(x.grade)}">${x.grade}</span></span></div>`).join('')}` : '';
+          const l = debts.filter((x) => { const y = curriculumTerm(x.code); return y ? (y % 2 === 1) === (sem === 'Güz') : false; });
+          return l.length ? `<div class="help" style="font-weight:700;margin:6px 0 4px">${sem} yarıyılı dersleri</div>${l.map((x) => `<div class="row between" style="padding:6px 0;border-top:1px dashed var(--border);font-size:14px"><span><span class="mono muted">${x.code}</span> ${esc(x.name)} <span class="muted" style="font-size:12px">· ${curriculumTerm(x.code)}. yarıyıl</span></span><span class="row" style="gap:6px"><span class="muted" style="font-size:12px">${x.akts} AKTS</span><span class="g ${gradeClass(x.grade)}">${x.grade}</span></span></div>`).join('')}` : '';
         }).join('')}
-        <p class="help" style="margin:10px 0 0">Bahar dersleri çoğunlukla bahar döneminde açılır; müfredatı değişen dersler için karşılığını danışmanına sor.</p>
+        ${debts.some((x) => !curriculumTerm(x.code)) ? `<div class="help" style="font-weight:700;margin:6px 0 4px">Yarıyılı bilinmeyen</div>${debts.filter((x) => !curriculumTerm(x.code)).map((x) => `<div class="row between" style="padding:6px 0;border-top:1px dashed var(--border);font-size:14px"><span><span class="mono muted">${x.code}</span> ${esc(x.name)}</span><span class="g ${gradeClass(x.grade)}">${x.grade}</span></div>`).join('')}` : ''}
+        <p class="help" style="margin:10px 0 0">Yarıyıllar 2023 müfredatından. Yönetmelik md. 26: FF, FD veya DS aldığın dersi verildiği ilk yarıyılda almak zorundasın; programdan çıkarılan dersler için eşdeğer dersi birim kurulu belirler (md. 26, 31).</p>
+        ${debts.filter((x) => window.DERS_NOTLARI?.[x.code]).map((x) => `<p class="help" style="margin:6px 0 0"><b class="mono">${esc(x.code)}:</b> ${esc(window.DERS_NOTLARI[x.code])}</p>`).join('')}
       </section>
       <section class="card card-pad">
         <div class="card-h"><h3 class="card-t">${icon('info')}Şartlı geçilen dersler</h3><span class="badge b-warn">${cond.length}</span></div>
         <div class="hist">${cond.map((x) => `<span class="badge b-neutral" title="${esc(x.name)}">${x.code} <span class="g g-cond">${x.grade}</span></span>`).join('')}</div>
-        <p class="help" style="margin:10px 0 0">DC/DD notları genelde GNO 2,00 ve üzerindeyken başarılı sayılır; GNO'nu yükseltmek bu dersleri de güvenceye alır.</p>
+        <p class="help" style="margin:10px 0 0">Yönetmelik md. 24: DC veya DD alınan ders, mezuniyet aşamasında GNO 2,00 olmak şartıyla başarılı sayılır. Mezuniyet için en az 2,00 GNO ve 240 AKTS gerekir (md. 31).</p>
       </section>
       <section>
         <h2 class="section-t" style="margin-top:4px">Transkript</h2>
@@ -919,9 +990,9 @@ function syncCardHtml() {
     <p class="help" style="margin:0 0 12px">Bir kez kurman yeterli: GitHub'da yalnızca <b>Gist</b> izni olan bir erişim anahtarı oluştur ve buraya yapıştır. Anahtar site şifrenle şifrelenip saklanır; diğer cihazlarda sadece site şifreni girmen yeter.</p>
     <ol class="steps">
       <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">GitHub'da yeni erişim anahtarı sayfasını aç ${icon('external')}</a></li>
-      <li><b>Token name:</b> Ders Takip eşitleme · <b>Expiration:</b> 1 yıl</li>
-      <li><b>Repository access:</b> Public repositories (varsayılan, yalnızca okuma)</li>
-      <li><b>Permissions → Account → Gists:</b> <i>Read and write</i> seç, başka izin verme</li>
+      <li><b>Token name:</b> Ders Takip eşitleme · <b>Expiration:</b> istediğin süre (süre dolunca anahtarı yenilemen gerekir)</li>
+      <li><b>Repository access:</b> Public repositories (anahtar yalnızca herkese açık depoları okuyabilir)</li>
+      <li><b>Permissions → User permissions → Gists:</b> <i>Read and write</i> seç, başka izin verme</li>
       <li><b>Generate token</b>'a bas, çıkan <span class="mono">github_pat_…</span> anahtarını kopyala</li>
     </ol>
     <form data-form="sync" class="row wrap" style="gap:8px;margin-top:12px" autocomplete="off">
@@ -944,9 +1015,9 @@ function viewSettings() {
       <div class="grid" style="grid-template-columns:1fr 1fr">
         <div class="field"><label for="sStart">Derslerin başladığı gün</label><input id="sStart" class="input" type="date" value="${s.start}" data-input="setting" data-key="start"></div>
         <div class="field"><label for="sWeeks">Hafta sayısı</label><input id="sWeeks" class="input" type="number" min="1" max="20" value="${s.weeks}" data-input="setting" data-key="weeks" data-num></div>
-        <div class="field"><label for="sMid">Vize haftası</label><input id="sMid" class="input" type="number" min="2" max="20" value="${s.midtermWeek}" data-input="setting" data-key="midtermWeek" data-num></div>
+        <div class="field"><label for="sMid">Ortak vize haftası (isteğe bağlı)</label><input id="sMid" class="input" type="number" min="2" max="20" placeholder="İlan edilmedi" value="${s.midtermWeek ?? ''}" data-input="setting" data-key="midtermWeek" data-num data-optional></div>
       </div>
-      <p class="help" style="margin:10px 0 0">Dönemin ilk haftasının herhangi bir günü olabilir. Hafta sayacı ve yoklama tabloları buna göre hesaplanır.</p>
+      <p class="help" style="margin:10px 0 0">${TAKVIM ? `Akademik takvime göre güz eğitimi ${fmtDate(parseDate(TAKVIM.baslangic), { day: 'numeric', month: 'long' })} – ${fmtDate(parseDate(TAKVIM.bitis), { day: 'numeric', month: 'long', year: 'numeric' })} (${TAKVIM.hafta} hafta). ` : ''}${esc(TAKVIM?.araSinavNotu || '')} Derslere özel vize tarihlerini Ajanda'dan "Vize" türüyle eklemen daha doğru olur.</p>
     </section>
     <section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('shield')}Devamsızlık sınırları</h3></div>
@@ -954,13 +1025,19 @@ function viewSettings() {
         <div class="field"><label for="sTh">Teorik dersler (%)</label><input id="sTh" class="input" type="number" min="0" max="100" value="${s.theoryLimit}" data-input="setting" data-key="theoryLimit" data-num></div>
         <div class="field"><label for="sLab">Laboratuvar (%)</label><input id="sLab" class="input" type="number" min="0" max="100" value="${s.labLimit}" data-input="setting" data-key="labLimit" data-num></div>
       </div>
-      <p class="help" style="margin:10px 0 0">Toplam ders saatinin en fazla bu oranı kadar devamsızlık yapılabilir. Ders bazında çekmeceden ayrıca değiştirebilirsin.</p>
+      <p class="help" style="margin:10px 0 0">Yönetmelik md. 20: derslere en az %70, uygulamalara en az %80 devam zorunlu (resmi tatiller eğitim gününden sayılmaz, md. 7). Ders bazında çekmeceden ayrıca değiştirebilirsin.</p>
+      <div class="lbl help" style="margin:14px 0 6px;font-weight:650">Alttan derslerde devam</div>
+      <div class="seg" role="group" aria-label="Alttan derslerde devam kuralı">
+        <button type="button" data-act="repeatRule" data-rule="bolum" aria-pressed="${repeatRule() === 'bolum'}">Zorunlu (bölüm kararı)</button>
+        <button type="button" data-act="repeatRule" data-rule="yonetmelik" aria-pressed="${repeatRule() === 'yonetmelik'}">Aranmaz (yönetmelik md. 20)</button>
+      </div>
+      <p class="help" style="margin:8px 0 0">${KURALLAR.devamKarari ? `${esc(KURALLAR.devamKarari.ozet)} (${fmtDate(parseDate(KURALLAR.devamKarari.tarih), { day: 'numeric', month: 'long', year: 'numeric' })})` : ''}</p>
     </section>
     <section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('target')}Not değerlendirme</h3></div>
-      <p class="help" style="margin:0 0 10px">Derslerin çoğunda not, bilgi paketindeki resmi oranlarla hesaplanır. Bu ağırlık yalnızca oranı bilinmeyen derslerde kullanılır.</p>
+      <p class="help" style="margin:0 0 10px">Not, bilgi paketindeki resmi oranlarla hesaplanır. Bu ağırlık yalnızca oranı bilinmeyen derslerde kullanılır; yönetmelik md. 24'e göre final etkisi %40–%60 arasında olmalıdır.</p>
       <div class="field" style="max-width:260px"><label for="sVize">Varsayılan vize ağırlığı (%) — final ${100 - s.vizeW}%</label><input id="sVize" class="input" type="number" min="0" max="100" value="${s.vizeW}" data-input="setting" data-key="vizeW" data-num></div>
-      <div class="lbl help" style="margin:14px 0 6px;font-weight:650">Harf notu alt sınırları (tahmin için)</div>
+      <div class="lbl help" style="margin:14px 0 6px;font-weight:650">Harf notu alt sınırları — yönetmelik md. 24 mutlak değerlendirme tablosu</div>
       <div class="scale-grid">${LETTERS.slice(0, 8).map((L, i) => `<div class="field"><label for="sc${i}">${L} ≥</label><input id="sc${i}" class="input" type="number" min="0" max="100" value="${s.scale[i]}" data-input="scale" data-i="${i}"></div>`).join('')}</div>
     </section>
     <section class="card card-pad">
@@ -969,7 +1046,7 @@ function viewSettings() {
         ${[['system', 'Sistem', 'monitor'], ['light', 'Açık', 'sun'], ['dark', 'Koyu', 'moon']].map(([k, l, ic]) => `<button type="button" data-act="theme" data-theme="${k}" aria-pressed="${s.theme === k}"><span class="row" style="gap:6px">${icon(ic)}${l}</span></button>`).join('')}
       </div>
       <div class="card-h" style="margin:22px 0 10px"><h3 class="card-t">${icon('download')}Veriler</h3></div>
-      <p class="help" style="margin:0 0 10px">Tüm kayıtlar yalnızca bu tarayıcıda saklanır${saveOk ? '' : ' — <b style="color:var(--danger)">şu an kaydedilemiyor</b>'}. Başka cihaza taşımak için yedek al.</p>
+      <p class="help" style="margin:0 0 10px">Kayıtlar bu tarayıcıda saklanır${saveOk ? '' : ' — <b style="color:var(--danger)">şu an kaydedilemiyor</b>'}; eşitleme açıksa şifrelenerek GitHub'daki gizli kayda da gönderilir. Yedek dosyası şifresizdir, güvenli bir yerde tut.</p>
       <div class="row wrap">
         <button type="button" class="btn" data-act="export">${icon('download')}Yedeği indir</button>
         <label class="btn" style="cursor:pointer">${icon('upload')}Yedek yükle<input type="file" accept="application/json" hidden data-input="import"></label>
@@ -979,5 +1056,9 @@ function viewSettings() {
       <p class="help" style="margin:0 0 10px">${window.hasRememberedKey && window.hasRememberedKey() ? 'Bu cihaz şifreni hatırlıyor. Ortak bir cihazdaysan kilitle.' : 'Sayfa her açılışta şifre ister.'}</p>
       <button type="button" class="btn" data-act="lock">${icon('shield')}Kilitle ve şifreyi unut</button>
     </section>
+    ${(window.KAYNAKLAR || []).length ? `<section class="card card-pad" style="grid-column:1 / -1">
+      <div class="card-h"><h3 class="card-t">${icon('info')}Bilgi kaynakları</h3></div>
+      <ul class="sources-list">${window.KAYNAKLAR.map((k) => `<li><div><b>${esc(k.ad)}</b>${k.url ? ` · <a href="${esc(k.url)}" target="_blank" rel="noopener noreferrer">Kaynağı aç ${icon('external')}</a>` : ''}</div><div class="help">${esc(k.detay)}${k.kontrol ? ` · Kontrol: ${fmtDate(parseDate(k.kontrol), { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}</div></li>`).join('')}</ul>
+    </section>` : ''}
   </div>`;
 }

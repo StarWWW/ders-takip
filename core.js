@@ -54,7 +54,11 @@ const fmt1 = (n) => (n == null || isNaN(n) ? '—' : n.toLocaleString('tr-TR', {
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 const courseByCode = Object.fromEntries(COURSES.map((c) => [c.code, c]));
-const needsAttendance = (c) => c.alis !== 'Alttan';
+// Alttan derslerde devam: yönetmelik md. 20 istisna tanır; bölüm kurulu kararı tüm derslerde devamı zorunlu kılar
+const repeatRule = () => (state?.settings?.repeatAttendance === 'yonetmelik' ? 'yonetmelik' : 'bolum');
+const needsAttendance = (c) => (repeatRule() === 'bolum' ? true : c.alis !== 'Alttan');
+const TAKVIM = window.TAKVIM || null;
+const KURALLAR = window.KURALLAR || {};
 const secKeys = (c) => Object.keys(c.sections);
 const hasSections = (c) => secKeys(c).length > 1;
 const cstyle = (c) => `--h:${c.hue}`;
@@ -107,12 +111,13 @@ const durText = (min) => {
 const STORE_KEY = 'dersTakip.v1';
 const TASK_TYPES = ['Ödev', 'Vize', 'Final', 'Quiz', 'Proje', 'Sunum', 'Diğer'];
 const DEFAULT_SETTINGS = {
-  start: '2026-09-14', weeks: 14, midtermWeek: 8, vizeW: 40, theoryLimit: 30, labLimit: 20, theme: 'system',
-  scale: [90, 85, 80, 75, 70, 60, 50, 40], // AA BA BB CB CC DC DD FD alt sınırları
+  start: TAKVIM?.baslangic || '2026-09-14', weeks: TAKVIM?.hafta || 15, midtermWeek: null, vizeW: 40, theoryLimit: 30, labLimit: 20, theme: 'system',
+  repeatAttendance: KURALLAR.devamKarari ? 'bolum' : 'yonetmelik',
+  scale: [90, 80, 70, 60, 50, 45, 40, 30], // Yönetmelik md. 24 mutlak değerlendirme: AA BA BB CB CC DC DD FD alt sınırları
   targetGno: 2.0,
 };
 const defaultState = () => ({
-  v: 2, sections: null, appliedDataSections: null, attendance: {}, grades: {}, sim: {}, tasks: [], notes: {}, limitOverride: {}, study: {},
+  v: 3, sections: null, appliedDataSections: null, attendance: {}, grades: {}, sim: {}, tasks: [], notes: {}, limitOverride: {}, study: {},
   settings: { ...DEFAULT_SETTINGS, scale: [...DEFAULT_SETTINGS.scale] },
 });
 
@@ -128,7 +133,9 @@ function sanitizeState(s) {
   const S = out.settings;
   S.start = ISO_DATE.test(st.start) ? st.start : DEFAULT_SETTINGS.start;
   S.weeks = Math.round(numOr(st.weeks, 14, 1, 20));
-  S.midtermWeek = Math.round(numOr(st.midtermWeek, 8, 2, 20));
+  S.midtermWeek = numOr(st.midtermWeek, null, 2, 20);
+  if (S.midtermWeek != null) S.midtermWeek = Math.round(S.midtermWeek);
+  S.repeatAttendance = ['bolum', 'yonetmelik'].includes(st.repeatAttendance) ? st.repeatAttendance : DEFAULT_SETTINGS.repeatAttendance;
   S.vizeW = numOr(st.vizeW, 40, 0, 100);
   S.theoryLimit = numOr(st.theoryLimit, 30, 0, 100);
   S.labLimit = numOr(st.labLimit, 20, 0, 100);
@@ -137,6 +144,13 @@ function sanitizeState(s) {
   S.targetGno = numOr(st.targetGno, 2, 0, 4);
   // v1'de dönem başlangıcı tahmini 21 Eylül'dü; gerçek tarih 14 Eylül
   if ((Number(s.v) || 1) < 2 && st.start === '2026-09-21') S.start = '2026-09-14';
+  // v2'deki doğrulanmamış varsayılanlar: 14 hafta, 8. hafta vize, yanlış harf aralıkları → resmi değerler
+  out.migrated = [];
+  if ((Number(s.v) || 1) < 3) {
+    if (st.weeks === 14 || st.weeks == null) { S.weeks = DEFAULT_SETTINGS.weeks; out.migrated.push('weeks'); }
+    if (st.midtermWeek === 8) { S.midtermWeek = null; out.migrated.push('midtermWeek'); }
+    if (JSON.stringify(st.scale) === JSON.stringify([90, 85, 80, 75, 70, 60, 50, 40])) { S.scale = [...DEFAULT_SETTINGS.scale]; out.migrated.push('scale'); }
+  }
 
   if (isObj(s.sections)) {
     out.sections = {};
@@ -207,7 +221,7 @@ let saveOk = true;
  * syncMeta'da tutulur; birleştirmede anahtar bazında en yeni değer kazanır, silinenler de zamanla işaretlenir.
  */
 const META_STORE = 'dersTakip.meta';
-const SYNC_SETTINGS = ['start', 'weeks', 'midtermWeek', 'vizeW', 'theoryLimit', 'labLimit', 'scale', 'targetGno']; // tema cihaza özeldir
+const SYNC_SETTINGS = ['start', 'weeks', 'midtermWeek', 'repeatAttendance', 'vizeW', 'theoryLimit', 'labLimit', 'scale', 'targetGno']; // tema cihaza özeldir
 const SYNC_KEY_RE = /^(att|grade|sim|note|limit|sec|set|task|study)~[^~]+(~[^~]+)?$/;
 function flattenState(st) {
   const m = new Map();
@@ -253,6 +267,12 @@ let baseFlat = flattenState(state);
 // Eşitleme gelmeden önce girilmiş kayıtlar: düşük zaman damgasıyla işaretle (uzaktaki gerçek değişikliklere yenilir, boş uzağa gönderilir)
 if (!hadMetaStore && localStorage.getItem(STORE_KEY)) for (const k of baseFlat.keys()) syncMeta[k] = 1;
 const saveMeta = () => { try { localStorage.setItem(META_STORE, JSON.stringify(syncMeta)); } catch (e) { /* yok say */ } };
+if (state.migrated?.length) {
+  const t = Date.now();
+  for (const k of state.migrated) syncMeta[`set~${k}`] = t;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* yok say */ }
+}
+delete state.migrated;
 saveMeta();
 
 // silent: kullanıcı değişikliği değil (varsayılanların kurulması, uzaktan birleştirme) — zaman damgası atılmaz
@@ -288,7 +308,7 @@ function mergeRemote(remote) {
   }
   if (changedLocal) {
     const theme = state.settings.theme, applied = state.appliedDataSections;
-    state = sanitizeState({ ...next, v: 2 });
+    state = sanitizeState({ ...next, v: 3 });
     state.settings.theme = theme; state.appliedDataSections = applied;
     if (!state.sections) state.sections = {};
     saveMeta();
@@ -345,7 +365,11 @@ function optimizeSections() {
   rec(0, { ...base });
   return best;
 }
-const OPTIMAL = optimizeSections();
+let optimalCache = { rule: null, value: null };
+function getOptimal() {
+  if (optimalCache.rule !== repeatRule()) optimalCache = { rule: repeatRule(), value: optimizeSections() };
+  return optimalCache.value;
+}
 // Bölümün açıkladığı resmi şubeler (şifreli veride "sections" alanı) varsa onları uygula
 const OFFICIAL_SECTIONS = (() => {
   const ds = window.DATA_SECTIONS;
@@ -356,21 +380,52 @@ const OFFICIAL_SECTIONS = (() => {
 })();
 const SECTIONS_KNOWN = !!OFFICIAL_SECTIONS;
 if (OFFICIAL_SECTIONS && state.appliedDataSections !== JSON.stringify(OFFICIAL_SECTIONS)) {
-  state.sections = { ...OPTIMAL, ...(state.sections || {}), ...OFFICIAL_SECTIONS };
+  state.sections = { ...getOptimal(), ...(state.sections || {}), ...OFFICIAL_SECTIONS };
   state.appliedDataSections = JSON.stringify(OFFICIAL_SECTIONS);
   save(); // bölümün açıkladığı şube: gerçek değişiklik olarak eşitlenir
 }
 if (!state.sections || COURSES.some((c) => hasSections(c) && !state.sections[c.code])) {
-  state.sections = { ...OPTIMAL, ...(state.sections || {}) };
+  state.sections = { ...getOptimal(), ...(state.sections || {}) };
   save({ silent: true }); // varsayılan öneri: diğer cihazlardaki seçimi ezmesin
 }
 
 const conflictsOfCourse = (code, list) => (list || findConflicts(state.sections)).filter((c) => c.a.code === code || c.b.code === code);
 const SEV_META = {
   kritik: { label: 'Kritik', cls: 'b-danger', desc: 'İki ders de devam zorunlu' },
-  dikkat: { label: 'Dikkat', cls: 'b-warn', desc: 'Alttan dersin bu saatini kaçırırsın' },
-  dusuk: { label: 'Düşük', cls: 'b-neutral', desc: 'İki ders de alttan (devam şartı yok)' },
+  dikkat: { label: 'Dikkat', cls: 'b-warn', desc: 'Birinde devam şartı yok (yönetmelik md. 20)' },
+  dusuk: { label: 'Düşük', cls: 'b-neutral', desc: 'İkisinde de devam şartı yok (yönetmelik md. 20)' },
 };
+
+/* ============ Akademik takvim ve tatiller ============ */
+function holidayOn(date) {
+  const iso = isoDate(date);
+  return (TAKVIM?.tatiller || []).find((t) => t.tarih === iso) || null;
+}
+// Oturum resmi tatile denk geliyor mu? (yarım gün tatillerde saatten sonrası)
+function sessionHoliday(date, s) {
+  const h = holidayOn(date);
+  if (!h) return null;
+  if (h.saat && toMin(SLOTS[s.to][1]) <= toMin(h.saat)) return null;
+  return h;
+}
+function calendarEvents() {
+  return (TAKVIM?.olaylar || []).map((e) => ({ ...e, bit: e.bit || e.bas }));
+}
+const activeEvents = (date, tur) => calendarEvents().filter((e) => (!tur || e.tur === tur) && e.bas <= isoDate(date) && isoDate(date) <= e.bit);
+const upcomingEvents = (date, days) => calendarEvents().filter((e) => e.bit >= isoDate(date) && daysBetween(date, parseDate(e.bas)) <= days);
+// Çakışan saatlerin dönem boyunca toplamı ve iki dersin devamsızlık haklarıyla karşılaştırması
+function conflictBudget(cf) {
+  let overlap = 0;
+  for (let w = 1; w <= state.settings.weeks; w++) {
+    const date = dateOfWeekDay(w, cf.d);
+    if (!sessionHoliday(date, { d: cf.d, from: cf.from, to: cf.to })) overlap += cf.hours;
+  }
+  const A = courseByCode[cf.a.code], B = courseByCode[cf.b.code];
+  const limA = limitHours(A), limB = limitHours(B);
+  const reqA = needsAttendance(A), reqB = needsAttendance(B);
+  const allowance = (reqA ? limA : Infinity) + (reqB ? limB : Infinity);
+  return { overlap, limA, limB, feasible: allowance >= overlap };
+}
 
 /* ============ Devamsızlık ============ */
 const attKey = (w, s) => `${w}|${s.d}|${s.from}|${s.to}`;
@@ -390,7 +445,12 @@ function attHours(code, val) {
   return h;
 }
 const limitPct = (c) => state.limitOverride[c.code] ?? (c.lab ? state.settings.labLimit : state.settings.theoryLimit);
-const totalHours = (c) => c.tu * state.settings.weeks;
+function totalHours(c) {
+  let h = 0;
+  const ss = sessionsFor(c);
+  for (let w = 1; w <= state.settings.weeks; w++) for (const s of ss) if (!sessionHoliday(dateOfWeekDay(w, s.d), s)) h += hoursOf(s);
+  return h;
+}
 const limitHours = (c) => Math.floor((totalHours(c) * limitPct(c)) / 100);
 function attStatus(c) {
   const abs = attHours(c.code, 'yok'), lim = limitHours(c), left = lim - abs;
@@ -427,7 +487,7 @@ function gradeCalc(code) {
   const vals = Object.fromEntries(parts.map((p) => [p.key, num(g[p.key])]));
   const b = num(g.but);
   const eff = { ...vals, ...(b != null ? { final: b } : {}) };
-  const avg = parts.every((p) => eff[p.key] != null) ? Math.round(parts.reduce((s, p) => s + (eff[p.key] * p.pct) / 100, 0)) : null;
+  const avg = parts.every((p) => eff[p.key] != null) ? Math.round(parts.reduce((s, p) => s + (eff[p.key] * p.pct) / 100, 0) * 100) / 100 : null;
   const fin = parts.find((p) => p.key === 'final');
   const others = parts.filter((p) => p.key !== 'final');
   const missing = others.filter((p) => vals[p.key] == null).map((p) => p.label);
@@ -454,9 +514,17 @@ function toggleStudy(code, w, field) {
   save();
   return cur;
 }
+function vizeInfo(c) {
+  const owner = studyOwner(c);
+  const codes = new Set([c.code, owner.code, ...COURSES.filter((x) => x.study?.ortak === owner.code).map((x) => x.code)]);
+  const task = state.tasks.filter((t) => t.type === 'Vize' && t.date && codes.has(t.course)).sort((a, b) => a.date.localeCompare(b.date))[0];
+  if (task) return { week: weekOf(parseDate(task.date)), date: task.date, source: 'ajanda' };
+  if (state.settings.midtermWeek) return { week: state.settings.midtermWeek, date: null, source: 'ayar' };
+  return null;
+}
 function studyScopeTopics(c, scope) {
-  const list = studyTopics(c), owner = studyOwner(c).code, mw = state.settings.midtermWeek;
-  if (scope === 'vize') return list.filter((h) => h.h < mw);
+  const list = studyTopics(c), owner = studyOwner(c).code;
+  if (scope === 'vize') { const v = vizeInfo(c); return v ? list.filter((h) => h.h < v.week) : list; }
   if (scope === 'tekrar') return list.filter((h) => studyMark(owner, h.h)?.r);
   return list;
 }
@@ -520,6 +588,7 @@ function nearestLetter(gp) {
   for (const L of LETTERS) if (GRADE_POINTS[L] >= gp - 1e-9) best = L;
   return best; // gp'yi karşılayan en düşük harf
 }
+const curriculumTerm = (code) => window.MUFREDAT_YARIYIL?.[code] || null;
 function remainingDebts() {
   const taking = new Set(COURSES.flatMap((c) => [c.code, c.old].filter(Boolean)));
   return [...latestMap().values()].filter((x) => ['FF', 'FD', 'DS'].includes(x.grade) && !taking.has(x.code));
