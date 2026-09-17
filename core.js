@@ -115,12 +115,12 @@ const STORE_KEY = 'dersTakip.v1';
 const TASK_TYPES = ['Ödev', 'Vize', 'Final', 'Quiz', 'Proje', 'Sunum', 'Diğer'];
 const DEFAULT_SETTINGS = {
   start: TAKVIM?.baslangic || '2026-09-14', weeks: TAKVIM?.hafta || 15, midtermWeek: null, vizeW: 40, theoryLimit: 30, labLimit: 20, theme: 'system',
-  repeatAttendance: KURALLAR.devamKarari ? 'bolum' : 'yonetmelik',
+  repeatAttendance: KURALLAR.devamKarari && !KURALLAR.devamKarari.alttanHaric ? 'bolum' : 'yonetmelik',
   scale: [90, 80, 70, 60, 50, 45, 40, 30], // Yönetmelik md. 24 mutlak değerlendirme: AA BA BB CB CC DC DD FD alt sınırları
   targetGno: 2.0,
 };
 const defaultState = () => ({
-  v: 3, sections: null, appliedDataSections: null, attendance: {}, grades: {}, sim: {}, tasks: [], notes: {}, limitOverride: {}, study: {},
+  v: 4, sections: null, appliedDataSections: null, attendance: {}, grades: {}, sim: {}, tasks: [], notes: {}, limitOverride: {}, study: {},
   settings: { ...DEFAULT_SETTINGS, scale: [...DEFAULT_SETTINGS.scale] },
 });
 
@@ -153,6 +153,10 @@ function sanitizeState(s) {
     if (st.weeks === 14 || st.weeks == null) { S.weeks = DEFAULT_SETTINGS.weeks; out.migrated.push('weeks'); }
     if (st.midtermWeek === 8) { S.midtermWeek = null; out.migrated.push('midtermWeek'); }
     if (JSON.stringify(st.scale) === JSON.stringify([90, 85, 80, 75, 70, 60, 50, 40])) { S.scale = [...DEFAULT_SETTINGS.scale]; out.migrated.push('scale'); }
+  }
+  // v3'te bölüm kararı varsayılan olarak alttan dersleri de kapsıyordu; kararın bu dersleri kapsamadığı teyit edildi
+  if ((Number(s.v) || 1) < 4 && S.repeatAttendance !== DEFAULT_SETTINGS.repeatAttendance) {
+    S.repeatAttendance = DEFAULT_SETTINGS.repeatAttendance; out.migrated.push('repeatAttendance');
   }
 
   if (isObj(s.sections)) {
@@ -311,7 +315,7 @@ function mergeRemote(remote) {
   }
   if (changedLocal) {
     const theme = state.settings.theme, applied = state.appliedDataSections;
-    state = sanitizeState({ ...next, v: 3 });
+    state = sanitizeState({ ...next, v: 4 });
     state.settings.theme = theme; state.appliedDataSections = applied;
     if (!state.sections) state.sections = {};
     saveMeta();

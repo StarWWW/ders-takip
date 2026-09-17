@@ -352,10 +352,12 @@ function agendaHtml(conflicts) {
 
 function attendanceRuleHtml(compact) {
   const k = KURALLAR.devamKarari;
+  const date = k ? fmtDate(parseDate(k.tarih), { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  const link = k?.url ? ` <a href="${esc(k.url)}" target="_blank" rel="noopener noreferrer">Duyuru ${icon('external')}</a>` : '';
   if (repeatRule() === 'bolum') {
-    return `<div class="callout warn" style="margin-bottom:12px">${icon('shield')}<div><b>Tüm derslerde devam zorunlu.</b> ${k ? `Bölüm Kurulu ${fmtDate(parseDate(k.tarih), { day: 'numeric', month: 'long', year: 'numeric' })} tarihli kararıyla 2025–2026 Bahar döneminden itibaren bölümdeki tüm derslerde devam zorunluluğu uygulanıyor; devam şartını sağlamayan öğrenci o dersten devamsızlık nedeniyle başarısız sayılıyor.` : ''}${compact ? '' : ' Yönetmelik (md. 20) tekrar alınan derslerde devam şartı aramasa da bölüm kararı alttan aldığın dersleri de kapsıyor. Uygulamayı danışmanına teyit ettirmen iyi olur; kural Ayarlar\'dan değiştirilebilir.'}${k?.url ? ` <a href="${esc(k.url)}" target="_blank" rel="noopener noreferrer">Duyuru ${icon('external')}</a>` : ''}</div></div>`;
+    return `<div class="callout warn" style="margin-bottom:12px">${icon('shield')}<div><b>Tüm derslerde devam zorunlu kabul ediliyor.</b> ${k ? `Bölüm Kurulu ${date} tarihli kararıyla 2025–2026 Bahar döneminden itibaren bölümdeki derslerde devam zorunluluğu uyguluyor.` : ''}${k?.kapsamNotu ? ` ${esc(k.kapsamNotu)} Bu görünüm en katı durumu gösterir; Ayarlar'dan değiştirebilirsin.` : compact ? '' : ' Yönetmelik (md. 20) tekrar alınan derslerde devam şartı aramaz; kararın alttan dersleri kapsayıp kapsamadığını danışmanına teyit ettir.'}${link}</div></div>`;
   }
-  return `<div class="callout info" style="margin-bottom:12px">${icon('shield')}<div><b>Yönetmelik md. 20 uygulanıyor:</b> derse devamını daha önce sağladığın alttan derslerde devam şartı aranmaz; ancak ara sınavlara ve nota katkısı olan tüm yarıyıl içi etkinliklere katılman zorunlu. ${k ? '<b>Dikkat:</b> bölüm kurulunun tüm derslerde devam zorunluluğu kararı var; bu seçim ona göre riskli olabilir.' : ''}</div></div>`;
+  return `<div class="callout info" style="margin-bottom:12px">${icon('shield')}<div><b>Alttan aldığın ve daha önce devamsızlıktan kalmadığın derslerde devam şartı yok</b> (yönetmelik md. 20); ara sınavlara ve nota katkısı olan tüm yarıyıl içi etkinliklere katılman yine zorunlu. İlk kez aldığın ve devamlı alttan derslerde devam zorunlu.${k?.kapsamNotu ? ` ${esc(k.kapsamNotu)}` : k ? ' <b>Dikkat:</b> bölüm kurulunun tüm derslerde devam zorunluluğu kararı var.' : ''}${compact ? '' : link}</div></div>`;
 }
 
 function conflictAdvice(cf) {
@@ -885,7 +887,7 @@ function viewAcademic() {
           <input id="tgt" type="range" min="1.5" max="2.6" step="0.05" value="${target}" data-input="target">
         </div>
         <div class="callout ${need > 4 ? 'danger' : need > 3 ? 'warn' : 'info'}" style="margin-top:12px">${icon('target')}<div>
-          ${need > 4 ? `Bu hedef tek dönemde ulaşılabilir değil (gereken DNO ${fmt2(need)}). Bahar dönemiyle birlikte planla.` : `Bu dönemki ${GRADED.length} dersin (staj hariç) ortalaması <b>${fmt2(Math.max(need, 0))}</b> olursa GNO'n <b>${fmt2(target)}</b> olur. Örneğin tüm dersler <b>${nearestLetter(need)}</b> ile geçilirse yeterli.`}
+          ${need > 4 ? `Bu hedef tek dönemde ulaşılabilir değil (gereken DNO ${fmt2(need)}). Bahar dönemiyle birlikte planla.` : `Bu dönemki ${GRADED.length} dersin${GRADED.length < COURSES.length ? ' (staj hariç)' : ''} ortalaması <b>${fmt2(Math.max(need, 0))}</b> olursa GNO'n <b>${fmt2(target)}</b> olur. Örneğin tüm dersler <b>${nearestLetter(need)}</b> ile geçilirse yeterli.`}
         </div></div>
         <div class="help" style="margin-top:10px">Tüm dersler CC → GNO ${fmt2(projection(Object.fromEntries(GRADED.map((c) => [c.code, 'CC']))).gno)} · CB → ${fmt2(projection(Object.fromEntries(GRADED.map((c) => [c.code, 'CB']))).gno)} · BB → ${fmt2(projection(Object.fromEntries(GRADED.map((c) => [c.code, 'BB']))).gno)}</div>
       </section>
@@ -1044,7 +1046,7 @@ function viewSettings() {
         <button type="button" data-act="repeatRule" data-rule="bolum" aria-pressed="${repeatRule() === 'bolum'}">Zorunlu (bölüm kararı)</button>
         <button type="button" data-act="repeatRule" data-rule="yonetmelik" aria-pressed="${repeatRule() === 'yonetmelik'}">Aranmaz (yönetmelik md. 20)</button>
       </div>
-      <p class="help" style="margin:8px 0 0">${KURALLAR.devamKarari ? `${esc(KURALLAR.devamKarari.ozet)} (${fmtDate(parseDate(KURALLAR.devamKarari.tarih), { day: 'numeric', month: 'long', year: 'numeric' })})` : ''}</p>
+      <p class="help" style="margin:8px 0 0">${KURALLAR.devamKarari ? `${esc(KURALLAR.devamKarari.ozet)} (${fmtDate(parseDate(KURALLAR.devamKarari.tarih), { day: 'numeric', month: 'long', year: 'numeric' })})${KURALLAR.devamKarari.kapsamNotu ? ` ${esc(KURALLAR.devamKarari.kapsamNotu)}` : ''}` : ''}</p>
     </section>
     <section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('target')}Not değerlendirme</h3></div>
