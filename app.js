@@ -124,7 +124,7 @@ function bindChart() {
     const r = el.getBoundingClientRect(), b = box.getBoundingClientRect();
     const vb = svg.viewBox.baseVal, scale = b.width / vb.width;
     const T = 16, ih = 250 - 16 - 34;
-    const cy = (T + ih - (p.gno / 3) * ih) * scale;
+    const cy = (T + ih - (p.gno / (Number(svg.dataset.max) || 3)) * ih) * scale;
     tip.innerHTML = `<b>${esc(p.term)}</b><br>GNO ${fmt2(p.gno)} · DNO ${fmt2(p.dno)}`;
     tip.style.left = `${r.left - b.left + r.width / 2}px`;
     tip.style.top = `${cy}px`;
@@ -139,6 +139,14 @@ function bindChart() {
 }
 
 /* ============ Olaylar ============ */
+// Devamsızlık işaretlenince kalan hak (teori/uygulama ayrı sınırlıysa ilgili bölüm) ve kuralla eklenen yoklar
+function attToast(c, s, auto) {
+  const st = attStatus(c), kind = kindAt(c, s.d, s.from, s.to);
+  const p = st.parts.find((x) => x.kind === kind) || st;
+  const name = `${c.name}${st.mixed ? ` (${p.label.toLocaleLowerCase('tr')})` : ''}`;
+  const extra = auto.length ? ` · Sabah gelinmeyen gün öğleden sonraki uygulama da yok yazıldı` : '';
+  toast(p.abs > p.lim ? `${name}: devamsızlık sınırı aşıldı!${extra}` : `${name}: ${p.lim - p.abs} saat hakkın kaldı${extra}`);
+}
 function attArgs(el) {
   return { code: el.dataset.code, w: Number(el.dataset.w), s: { d: Number(el.dataset.d), from: Number(el.dataset.from), to: Number(el.dataset.to) } };
 }
@@ -155,18 +163,19 @@ document.addEventListener('click', (e) => {
       const { code, w, s } = attArgs(el);
       const cur = getAtt(code, w, s);
       const val = cur === el.dataset.val ? null : el.dataset.val;
-      setAtt(code, w, s, val);
-      const c = courseByCode[code], st = attStatus(c);
-      if (val === 'yok' && needsAttendance(c)) {
-        toast(st.abs > st.lim ? `${c.name}: devamsızlık sınırı aşıldı!` : `${c.name}: ${st.lim - st.abs} saat hakkın kaldı`);
-      } else if (val === 'var') toast('Katılım kaydedildi');
+      const auto = setAtt(code, w, s, val);
+      const c = courseByCode[code];
+      if (val === 'yok' && needsAttendance(c)) attToast(c, s, auto);
+      else if (val === 'var') toast('Katılım kaydedildi');
       refresh();
       break;
     }
     case 'attcycle': {
       const { code, w, s } = attArgs(el);
       const cur = getAtt(code, w, s);
-      setAtt(code, w, s, cur == null ? 'var' : cur === 'var' ? 'yok' : null);
+      const next = cur == null ? 'var' : cur === 'var' ? 'yok' : null;
+      const auto = setAtt(code, w, s, next);
+      if (auto.length) attToast(courseByCode[code], s, auto);
       refresh();
       break;
     }
@@ -185,7 +194,7 @@ document.addEventListener('click', (e) => {
     case 'repeatRule':
       state.settings.repeatAttendance = el.dataset.rule === 'yonetmelik' ? 'yonetmelik' : 'bolum';
       save(); refresh();
-      toast(el.dataset.rule === 'yonetmelik' ? 'Alttan derslerde devam şartı aranmıyor (yönetmelik md. 20)' : 'Tüm derslerde devam zorunlu (bölüm kararı)');
+      toast(el.dataset.rule === 'yonetmelik' ? `Alttan derslerde devam şartı aranmıyor (${ALTTAN.madde})` : 'Tüm derslerde devam zorunlu (bölüm kararı)');
       break;
     case 'studyDone':
     case 'studyReview': {
@@ -436,7 +445,8 @@ window.addEventListener('online', () => toast('Tekrar çevrimiçi'));
 /* ============ Eşitleme göstergesi ============ */
 function renderSyncPill() {
   const pill = $('#syncPill'), i = Sync.info;
-  if (!i.available) { pill.hidden = true; return; }
+  // Eşitleme kaydı olmayan hesapta sürekli uyarı gösterme; kurulum Ayarlar'da
+  if (!i.available || (!i.configured && !i.hasToken)) { pill.hidden = true; return; }
   const [cls, label] = SYNC_STATUS[i.status] || SYNC_STATUS.yok;
   const ic = i.status === 'esitleniyor' || i.status === 'bekliyor' ? 'refresh' : ['hata', 'kurulum', 'cevrimdisi'].includes(i.status) ? 'cloudOff' : 'cloud';
   pill.hidden = false;

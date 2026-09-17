@@ -33,10 +33,15 @@ function semInfo(n = now()) {
 }
 function alisBadge(c) {
   if (c.staj) return `<span class="badge b-info">${icon('flag')}Staj</span>`;
-  if (c.alis === 'Zorunlu') return `<span class="badge b-primary">${icon('shield')}Devam zorunlu</span>`;
   if (c.alis === 'Devamlı Alttan') return `<span class="badge b-warn">${icon('repeat')}Devamlı alttan</span>`;
-  return `<span class="badge b-neutral" title="${repeatRule() === 'bolum' ? 'Bölüm kurulu kararıyla bu derste de devam zorunlu' : 'Yönetmelik md. 20: devam şartı aranmaz; ara sınav ve yarıyıl içi etkinliklere katılım zorunlu'}">${icon('repeat')}Alttan</span>`;
+  if (c.alis === 'Alttan') {
+    const title = !needsAttendance(c) ? `${capFirst(ALTTAN.madde)}: devam şartı aranmaz; ${ALTTAN.yukumluluk}`
+      : repeatRule() === 'bolum' ? 'Bölüm kurulu kararıyla bu derste de devam zorunlu' : 'Bu derste de devam zorunlu';
+    return `<span class="badge b-neutral" title="${esc(title)}">${icon('repeat')}Alttan</span>`;
+  }
+  return `<span class="badge b-primary">${icon('shield')}Devam zorunlu</span>${c.alis === 'Seçmeli' ? '<span class="badge b-neutral">Seçmeli</span>' : ''}`;
 }
+const teacherOf = (c, s) => s?.hoca || c.teacher || '';
 function sectionLabel(sec) { return sec ? `Şube ${sec}` : 'Tek şube'; }
 function conflictMap(list) {
   const m = new Map();
@@ -80,7 +85,7 @@ function heroHtml() {
     const ev = calendarEvents().filter((e) => e.tur === 'sinav' && e.bit >= isoDate(n))[0];
     return `<section class="hero neutral"><div class="hero-k">${icon('flag')} Güz yarıyılı eğitimi tamamlandı</div>
       <div class="hero-name">${ev ? esc(ev.ad) : 'Sınav dönemi'}</div>
-      <div class="hero-meta">${ev ? `<span>${icon('calendar')}${fmtRange(ev)}</span>` : ''}<span>Sınav programı bölüm tarafından en az iki hafta önce ilan edilir (yönetmelik md. 21).</span></div></section>`;
+      <div class="hero-meta">${ev ? `<span>${icon('calendar')}${fmtRange(ev)}</span>` : ''}${METIN.sinavIlan ? `<span>${esc(METIN.sinavIlan)}</span>` : ''}</div></section>`;
   }
   const hol = si.inSem && d <= 4 ? holidayOn(n) : null;
   const todays = si.inSem ? dateSessions(startOfDay(n)) : [];
@@ -92,7 +97,7 @@ function heroHtml() {
     return `<section class="hero c" style="${cstyle(c)}" aria-live="polite">
       <div class="hero-k"><span class="live" aria-hidden="true"></span> Şu an derste · <span class="mono">${timeRange(s)}</span></div>
       <div class="hero-name">${esc(c.name)}</div>
-      <div class="hero-meta"><span>${icon('pin')}${esc(s.room)}</span><span>${icon('user')}${esc(c.teacher)}</span>${s.sec ? `<span>${sectionLabel(s.sec)}</span>` : ''}</div>
+      <div class="hero-meta"><span>${icon('pin')}${esc(s.room)}</span>${teacherOf(c, s) ? `<span>${icon('user')}${esc(teacherOf(c, s))}</span>` : ''}${s.sec ? `<span>${sectionLabel(s.sec)}</span>` : ''}${isMixed(c) ? `<span>${KIND_LABEL[sessionKind(c, s)]}</span>` : ''}</div>
       <div class="hero-count"><b>${durText(left)}</b><span class="muted">kaldı</span></div>
       ${progressBar(pct, 'x')}
       ${par.length ? `<div class="callout warn" style="margin-top:14px">${icon('alert')}<div>Aynı saatte <b>${par.map((p) => esc(p.name)).join(', ')}</b> dersi de var.</div></div>` : ''}
@@ -120,7 +125,7 @@ function heroHtml() {
   return `<section class="hero c" style="${cstyle(c)}">
     <div class="hero-k">${kicker}</div>
     <div class="hero-name">${esc(c.name)}</div>
-    <div class="hero-meta"><span>${icon('clock')}<span class="mono">${timeRange(nx.s)}</span></span><span>${icon('pin')}${esc(nx.s.room)}</span><span>${icon('user')}${esc(c.teacher)}</span></div>
+    <div class="hero-meta"><span>${icon('clock')}<span class="mono">${timeRange(nx.s)}</span></span><span>${icon('pin')}${esc(nx.s.room)}</span>${teacherOf(c, nx.s) ? `<span>${icon('user')}${esc(teacherOf(c, nx.s))}</span>` : ''}${isMixed(c) ? `<span>${KIND_LABEL[sessionKind(c, nx.s)]}</span>` : ''}</div>
     <div class="hero-count">${when}</div>
     <div class="hero-actions"><button class="btn btn-sm" type="button" data-act="open" data-code="${c.code}">Ders detayı ${icon('arrow')}</button><a class="btn btn-sm btn-ghost" href="#program">Haftalık program</a></div>
   </section>`;
@@ -143,7 +148,7 @@ function timelineHtml(date, conflicts) {
       <div class="tl-body" data-act="open" data-code="${c.code}" role="button" tabindex="0" aria-label="${esc(c.name)} detayını aç">
         <div style="min-width:0">
           <div class="tl-name">${esc(c.name)}</div>
-          <div class="tl-sub"><span class="mono">${c.code}</span><span>${icon('pin')}${esc(s.room)}</span>${s.sec ? `<span>Şb. ${s.sec}</span>` : ''}${sev ? `<span class="badge ${SEV_META[sev].cls}">${icon('alert')}Çakışma</span>` : ''}</div>
+          <div class="tl-sub"><span class="mono">${c.code}</span><span>${icon('pin')}${esc(s.room)}</span>${s.sec ? `<span>Şb. ${esc(s.sec)}</span>` : ''}${isMixed(c) ? `<span>${KIND_LABEL[sessionKind(c, s)]}</span>` : ''}${sev ? `<span class="badge ${SEV_META[sev].cls}">${icon('alert')}Çakışma</span>` : ''}</div>
         </div>
         ${canMark ? attButtons(s, week) : ''}
       </div>
@@ -168,7 +173,10 @@ function viewToday() {
   const sevCount = { kritik: 0, dikkat: 0, dusuk: 0 };
   conflicts.forEach((c) => sevCount[c.sev]++);
 
-  const req = COURSES.filter((c) => needsAttendance(c) && hasSchedule(c)).map((c) => ({ c, st: attStatus(c) })).sort((a, b) => b.st.ratio - a.st.ratio);
+  // Teori ve uygulaması ayrı sınırlı derslerde her bölüm ayrı satır
+  const req = COURSES.filter((c) => needsAttendance(c) && hasSchedule(c))
+    .flatMap((c) => { const st = attStatus(c); return st.parts.map((p) => ({ c, st: p, sub: st.mixed ? p.label : '' })); })
+    .sort((a, b) => b.st.ratio - a.st.ratio);
   const noSchedule = COURSES.filter((c) => !c.staj && !hasSchedule(c));
   const upcoming = state.tasks.filter((t) => !t.done).sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')).slice(0, 3);
   const need = requiredDno(state.settings.targetGno);
@@ -209,14 +217,14 @@ function viewToday() {
       </section>
       <section class="card card-pad">
         <div class="card-h"><h3 class="card-t">${icon('shield')}Devamsızlık</h3><a class="link-btn" href="#dersler">Tümü ${icon('arrow')}</a></div>
-        ${req.map(({ c, st }) => `
+        ${req.map(({ c, st, sub }) => `
           <div class="risk-row c" style="${cstyle(c)}" data-act="open" data-code="${c.code}" role="button" tabindex="0">
-            <div class="nm"><i class="dot"></i><span>${esc(c.name)}</span></div>
+            <div class="nm"><i class="dot"></i><span>${esc(c.name)}</span>${sub ? `<small class="nm-sub">${sub}</small>` : ''}</div>
             <div class="num">${st.abs} / ${st.lim} sa${st.lvl === 'danger' ? ` <span class="badge b-danger">Aşıldı</span>` : st.lvl === 'warn' ? ` <span class="badge b-warn">Sınırda</span>` : ''}</div>
             ${progressBar(st.lim ? (st.abs / st.lim) * 100 : 0, st.lvl)}
           </div>`).join('')}
         ${noSchedule.length ? `<div class="help" style="margin-top:10px">${noSchedule.map((c) => esc(c.name)).join(', ')}: ders saati programda olmadığı için takip edilemiyor.</div>` : ''}
-        <div class="help" style="margin-top:10px">Yoklamayı programdaki ✓ / ✕ düğmeleriyle işaretle. Yönetmelik md. 20: derslere en az %70, uygulamalara en az %80 devam; resmi tatiller hesaba katılmaz.</div>
+        <div class="help" style="margin-top:10px">Yoklamayı programdaki ✓ / ✕ düğmeleriyle işaretle. ${esc(METIN.devam || '')}</div>
       </section>
       ${studyOwners().length && !si.after ? (() => { const tw = thisWeekRows(4); return `<section class="card card-pad">
         <div class="card-h"><h3 class="card-t">${icon('bookOpen')}Bu hafta çalış</h3><a class="link-btn" href="#calisma">Konular ${icon('arrow')}</a></div>
@@ -240,7 +248,8 @@ function viewToday() {
 }
 
 /* ============ PROGRAM ============ */
-const DAY_START = 8 * 60, DAY_END = 17 * 60 + 10, PPM = 1.12;
+const SLOT_LIST = Object.values(SLOTS);
+const DAY_START = toMin(SLOT_LIST[0][0]) - 10, DAY_END = toMin(SLOT_LIST[SLOT_LIST.length - 1][1]) + 10, PPM = 1.12;
 const yOf = (min) => (min - DAY_START) * PPM;
 
 function layoutDay(list) {
@@ -271,7 +280,7 @@ function gridHtml(conflicts) {
   const H = yOf(DAY_END);
   const slotStarts = Object.values(SLOTS).map((x) => toMin(x[0]));
   const lines = slotStarts.map((m) => `<div class="tt-line" style="top:${yOf(m)}px"></div>`).join('');
-  const lunch = `<div class="tt-lunch" style="top:${yOf(12 * 60)}px;height:${70 * PPM}px">Öğle arası</div>`;
+  const lunch = `<div class="tt-lunch" style="top:${yOf(toMin(LUNCH[0]))}px;height:${(toMin(LUNCH[1]) - toMin(LUNCH[0])) * PPM}px">Öğle arası</div>`;
   const times = slotStarts.map((m, i) => `<div class="tt-time" style="top:${yOf(m)}px">${Object.values(SLOTS)[i][0]}</div>`).join('');
   const mins = minutesOfDay(n);
 
@@ -281,8 +290,9 @@ function gridHtml(conflicts) {
       const s = it.s, c = courseByCode[s.code];
       const sev = cmap.get(`${s.code}|${s.d}|${s.from}`);
       const w = 100 / it.lanes, narrow = it.lanes > 1;
-      const cls = ['blk', 'c', c.lab ? 'lab' : '', needsAttendance(c) ? '' : 'opt', sev ? `conf-${sev}` : '', narrow ? 'narrow' : '', s.from === s.to ? 'short' : ''].join(' ');
-      const label = `${c.name}, ${DAYS[d]} ${timeRange(s)}, ${s.room}${sev ? ', çakışma var' : ''}`;
+      const practice = sessionKind(c, s) === 'u';
+      const cls = ['blk', 'c', practice ? 'lab' : '', needsAttendance(c) ? '' : 'opt', sev ? `conf-${sev}` : '', narrow ? 'narrow' : '', s.from === s.to ? 'short' : ''].join(' ');
+      const label = `${c.name}${isMixed(c) ? ` (${KIND_LABEL[sessionKind(c, s)].toLocaleLowerCase('tr')})` : ''}, ${DAYS[d]} ${timeRange(s)}, ${s.room}${sev ? ', çakışma var' : ''}`;
       return `<button type="button" class="${cls}" style="${cstyle(c)};top:${yOf(it.a) + 1}px;height:${(it.b - it.a) * PPM - 2}px;left:calc(${it.lane * w}% + 3px);width:calc(${w}% - 6px)" data-act="open" data-code="${c.code}" aria-label="${esc(label)}" title="${esc(label)}">
         <span class="b-code">${sev ? icon('alert') : ''}${c.code}${s.sec ? ` · ${s.sec}` : ''}</span>
         <span class="b-name">${esc(c.name)}</span>
@@ -310,7 +320,7 @@ function gridHtml(conflicts) {
     <div class="legend">
       <span><i class="lg-sw"></i>Devam zorunlu</span>
       <span><i class="lg-sw dash"></i>Alttan alınan ders</span>
-      <span><i class="lg-sw lab"></i>Laboratuvar</span>
+      <span><i class="lg-sw lab"></i>Uygulama / laboratuvar</span>
       <span><i class="lg-sw cf"></i>Çakışma (renk = önem)</span>
     </div>
   </div>`;
@@ -333,15 +343,15 @@ function agendaHtml(conflicts) {
     const c = courseByCode[s.code];
     const sev = cmap.get(`${s.code}|${s.d}|${s.from}`);
     let pre = '';
-    if (!lunchShown && s.from >= 5 && list.some((x) => x.from < 5)) { lunchShown = true; pre = `<div class="tl-item"><div class="tl-time">12:00</div><div class="muted" style="padding:10px 0;font-size:13px;display:flex;gap:6px;align-items:center">${icon('coffee')}Öğle arası</div></div>`; }
+    if (!lunchShown && s.from >= AFTERNOON_SLOT && list.some((x) => x.from < AFTERNOON_SLOT)) { lunchShown = true; pre = `<div class="tl-item"><div class="tl-time">${LUNCH[0]}</div><div class="muted" style="padding:10px 0;font-size:13px;display:flex;gap:6px;align-items:center">${icon('coffee')}Öğle arası</div></div>`; }
     const live = weekOf(n) >= 1 && ui.day === today && sm(s) <= minutesOfDay(n) && minutesOfDay(n) < em(s) ? 'now' : '';
     return `${pre}<div class="tl-item ${live} c" style="${cstyle(c)}">
       <div class="tl-time">${SLOTS[s.from][0]}<small>${SLOTS[s.to][1]}</small></div>
       <div class="tl-body" data-act="open" data-code="${c.code}" role="button" tabindex="0">
         <div style="min-width:0">
           <div class="tl-name">${esc(c.name)}</div>
-          <div class="tl-sub"><span class="mono">${c.code}${s.sec ? ` · Şb. ${s.sec}` : ''}</span><span>${icon('pin')}${esc(s.room)}</span></div>
-          <div class="tl-sub" style="margin-top:6px">${needsAttendance(c) ? '<span class="badge b-primary">Devam zorunlu</span>' : '<span class="badge b-neutral">Alttan</span>'}${sev ? `<span class="badge ${SEV_META[sev].cls}">${icon('alert')}Çakışma</span>` : ''}${c.lab ? '<span class="badge b-neutral">Lab</span>' : ''}</div>
+          <div class="tl-sub"><span class="mono">${c.code}${s.sec ? ` · Şb. ${esc(s.sec)}` : ''}</span><span>${icon('pin')}${esc(s.room)}</span></div>
+          <div class="tl-sub" style="margin-top:6px">${needsAttendance(c) ? '<span class="badge b-primary">Devam zorunlu</span>' : '<span class="badge b-neutral">Alttan</span>'}${sev ? `<span class="badge ${SEV_META[sev].cls}">${icon('alert')}Çakışma</span>` : ''}${sessionKind(c, s) === 'u' ? `<span class="badge b-neutral">${c.lab ? 'Lab' : 'Uygulama'}</span>` : ''}</div>
         </div>
       </div>
     </div>`;
@@ -355,9 +365,10 @@ function attendanceRuleHtml(compact) {
   const date = k ? fmtDate(parseDate(k.tarih), { day: 'numeric', month: 'long', year: 'numeric' }) : '';
   const link = k?.url ? ` <a href="${esc(k.url)}" target="_blank" rel="noopener noreferrer">Duyuru ${icon('external')}</a>` : '';
   if (repeatRule() === 'bolum') {
-    return `<div class="callout warn" style="margin-bottom:12px">${icon('shield')}<div><b>Tüm derslerde devam zorunlu kabul ediliyor.</b> ${k ? `Bölüm Kurulu ${date} tarihli kararıyla 2025–2026 Bahar döneminden itibaren bölümdeki derslerde devam zorunluluğu uyguluyor.` : ''}${k?.kapsamNotu ? ` ${esc(k.kapsamNotu)} Bu görünüm en katı durumu gösterir; Ayarlar'dan değiştirebilirsin.` : compact ? '' : ' Yönetmelik (md. 20) tekrar alınan derslerde devam şartı aramaz; kararın alttan dersleri kapsayıp kapsamadığını danışmanına teyit ettir.'}${link}</div></div>`;
+    return `<div class="callout warn" style="margin-bottom:12px">${icon('shield')}<div><b>Tüm derslerde devam zorunlu kabul ediliyor.</b> ${k ? `Bölüm Kurulu ${date} tarihli kararıyla 2025–2026 Bahar döneminden itibaren bölümdeki derslerde devam zorunluluğu uyguluyor.` : ''}${k?.kapsamNotu ? ` ${esc(k.kapsamNotu)} Bu görünüm en katı durumu gösterir; Ayarlar'dan değiştirebilirsin.` : compact ? '' : ` ${esc(capFirst(ALTTAN.madde))} tekrar alınan derslerde devam şartı aramaz; kararın alttan dersleri kapsayıp kapsamadığını danışmanına teyit ettir.`}${link}</div></div>`;
   }
-  return `<div class="callout info" style="margin-bottom:12px">${icon('shield')}<div><b>Alttan aldığın ve daha önce devamsızlıktan kalmadığın derslerde devam şartı yok</b> (yönetmelik md. 20); ara sınavlara ve nota katkısı olan tüm yarıyıl içi etkinliklere katılman yine zorunlu. İlk kez aldığın ve devamlı alttan derslerde devam zorunlu.${k?.kapsamNotu ? ` ${esc(k.kapsamNotu)}` : k ? ' <b>Dikkat:</b> bölüm kurulunun tüm derslerde devam zorunluluğu kararı var.' : ''}${compact ? '' : link}</div></div>`;
+  if (!COURSES.some((c) => c.alis === 'Alttan')) return '';
+  return `<div class="callout info" style="margin-bottom:12px">${icon('shield')}<div><b>${esc(ALTTAN.baslik)}</b> (${esc(ALTTAN.madde)}); ${esc(ALTTAN.yukumluluk)}. İlk kez aldığın ve devamlı alttan derslerde devam zorunlu.${k?.kapsamNotu ? ` ${esc(k.kapsamNotu)}` : k ? ' <b>Dikkat:</b> bölüm kurulunun tüm derslerde devam zorunluluğu kararı var.' : ''}${compact ? '' : link}</div></div>`;
 }
 
 function conflictAdvice(cf) {
@@ -371,13 +382,14 @@ function conflictAdvice(cf) {
   }
   if (cf.sev === 'dikkat') {
     const req = needsAttendance(A) ? A : B, alt = req === A ? B : A;
-    return `<b>${esc(req.name)}</b> dersine git (devam zorunlu). <b>${esc(alt.name)}</b> için devam şartı yok ama ara sınav ve nota katkısı olan etkinliklere katılman gerekir (yönetmelik md. 20).`;
+    return `<b>${esc(req.name)}</b> dersine git (devam zorunlu). <b>${esc(alt.name)}</b> için devam şartı yok ama ${esc(ALTTAN.yukumluluk)} (${esc(ALTTAN.madde)}).`;
   }
-  return `İki derste de devam şartı yok (yönetmelik md. 20); ara sınavlara ve nota katkısı olan etkinliklere katılman yeterli.`;
+  return `İki derste de devam şartı yok (${esc(ALTTAN.madde)}); ${esc(ALTTAN.yukumluluk)}.`;
 }
 
 function viewProgram() {
   const conflicts = findConflicts(state.sections);
+  const anySections = COURSES.some(hasSections);
   const isOptimal = COURSES.filter(hasSections).every((c) => state.sections[c.code] === getOptimal()[c.code]);
   const totalCfHours = conflicts.reduce((a, c) => a + c.hours, 0);
   const crit = conflicts.filter((c) => c.sev === 'kritik').length;
@@ -411,21 +423,21 @@ function viewProgram() {
       <span class="badge b-neutral">${conflicts.length} çakışma · ${totalCfHours} saat</span>
     </div>
     <div class="row">
-      ${isOptimal ? `<span class="badge b-primary">${icon('sparkles')}En iyi şube düzeni</span>` : `<button type="button" class="btn btn-primary btn-sm" data-act="optimize">${icon('sparkles')}En az çakışmalı düzeni uygula</button>`}
+      ${!anySections ? '' : isOptimal ? `<span class="badge b-primary">${icon('sparkles')}En iyi şube düzeni</span>` : `<button type="button" class="btn btn-primary btn-sm" data-act="optimize">${icon('sparkles')}En az çakışmalı düzeni uygula</button>`}
       <button type="button" class="btn btn-sm" data-act="print">Yazdır</button>
     </div>
   </div>
   ${attendanceRuleHtml(false)}
   ${gridHtml(conflicts)}
   ${agendaHtml(conflicts)}
-  <h2 class="section-t">Şube seçimi</h2>
+  ${anySections ? `<h2 class="section-t">Şube seçimi</h2>
   ${SECTIONS_KNOWN
     ? `<div class="callout ok" style="margin-bottom:12px">${icon('check')}<div>Şubelerin bölümün açıkladığı listeye göre ayarlandı. Değişiklik olursa aşağıdan güncelleyebilirsin.</div></div>`
     : `<div class="callout warn" style="margin-bottom:12px">${icon('info')}<div><b>Şubeler henüz açıklanmadı.</b> Şimdilik çakışmayı en aza indiren düzen gösteriliyor (<span style="color:var(--primary)">●</span> önerilen). Şuben açıklanınca buradan seçebilirsin; yoklama kayıtların kaybolmaz.</div></div>`}
-  <div class="sec-panel">${secPanel}</div>
+  <div class="sec-panel">${secPanel}</div>` : ''}
   <h2 class="section-t">Çakışmalar ve öneriler</h2>
   <div class="conf-list">${confList}</div>
-  <p class="help" style="margin-top:14px">Devamsızlık hakları yönetmelik md. 20'ye göre (derslere %70, uygulamalara %80 devam) ${state.settings.weeks} haftalık dönemin gerçek ders saatlerinden, resmi tatiller çıkarılarak hesaplanır. Ders saatleri ve derslikler bölümün 07.09.2026 tarihli ders programından alınmıştır.</p>`;
+  <p class="help" style="margin-top:14px">Devamsızlık hakları ${state.settings.weeks} haftalık dönemin gerçek ders saatlerinden, resmi tatiller çıkarılarak hesaplanır (teorik derslerde %${state.settings.theoryLimit}, uygulama ve laboratuvarda %${state.settings.labLimit}). ${esc(METIN.devam || '')} ${esc(METIN.programKaynak || '')}</p>`;
 }
 
 /* ============ DERSLER ============ */
@@ -438,17 +450,17 @@ function courseCard(c, conflicts) {
     : !hasSchedule(c)
     ? `<div class="att"><div class="row"><span style="color:var(--warn)">Ders saati programda yok</span></div></div>`
     : needsAttendance(c)
-    ? `<div class="att"><div class="row"><span>Devamsızlık</span><b style="color:var(--text)">${st.abs} / ${st.lim} saat</b></div>${progressBar(st.lim ? (st.abs / st.lim) * 100 : 0, st.lvl)}</div>`
-    : `<div class="att"><div class="row"><span>Devam şartı yok (md. 20)</span><span>${st.present + st.abs ? `${st.present} sa katıldın` : ''}</span></div></div>`;
+    ? `<div class="att">${st.parts.map((p) => `<div class="row"><span>Devamsızlık${st.mixed ? ` · ${p.label.toLocaleLowerCase('tr')}` : ''}</span><b style="color:var(--text)">${p.abs} / ${p.lim} saat</b></div>${progressBar(p.lim ? (p.abs / p.lim) * 100 : p.abs ? 100 : 0, p.lvl)}`).join('')}</div>`
+    : `<div class="att"><div class="row"><span>Devam şartı yok (${esc(maddeKisa(ALTTAN.madde))})</span><span>${st.present + st.abs ? `${st.present} sa katıldın` : ''}</span></div></div>`;
   return `<article class="ccard c" style="${cstyle(c)}" data-act="open" data-code="${c.code}" role="button" tabindex="0" aria-label="${esc(c.name)} detayını aç">
-    <div class="top"><span class="chip-code">${c.code}</span>${alisBadge(c)}${c.lab ? `<span class="badge b-neutral">${icon('flask')}Lab</span>` : ''}${cf.length ? `<span class="badge ${worst}">${icon('alert')}${cf.length}</span>` : ''}</div>
+    <div class="top"><span class="chip-code">${c.code}</span>${alisBadge(c)}${hasPractice(c) ? `<span class="badge b-neutral">${icon('flask')}${c.lab ? 'Lab' : 'Uygulama'}</span>` : ''}${cf.length ? `<span class="badge ${worst}">${icon('alert')}${cf.length}</span>` : ''}</div>
     <h3>${esc(c.name)}</h3>
     ${c.staj ? '' : `<div class="teacher">${icon('user')}${c.teacher ? esc(c.teacher) : '<span class="muted">Öğretim elemanı programda belirtilmemiş</span>'}</div>`}
-    <div class="sched">${ss.map((s) => `<div><b>${DAYS_SHORT[s.d]}</b><span class="mono">${timeRange(s)}</span><span>${esc(s.room)}</span></div>`).join('')}</div>
+    <div class="sched">${ss.map((s) => `<div><b>${DAYS_SHORT[s.d]}</b><span class="mono">${timeRange(s)}</span><span>${esc(s.room)}${isMixed(c) && sessionKind(c, s) === 'u' ? ' · uygulama' : ''}</span></div>`).join('')}</div>
     ${att}
     <div class="hist">${hist.length ? `${hist.map((h) => `<span class="g ${gradeClass(h.grade)}" title="${esc(h.term)}">${h.grade}</span>`).join('')}<span class="muted" style="font-size:12px">· ${hist.length + 1}. deneme</span>` : `<span class="badge b-info">İlk kez alıyorsun</span>`}</div>
     <div class="meta">
-      <div><div class="k">T+U</div><div class="v">${c.tu}</div></div>
+      <div><div class="k">T+U</div><div class="v">${esc(c.tuAyrinti || c.tu)}</div></div>
       <div><div class="k">Kredi</div><div class="v">${c.krd}</div></div>
       <div><div class="k">AKTS</div><div class="v">${c.akts}</div></div>
       <div><div class="k">${c.staj ? 'Not' : 'Ort.'}</div><div class="v">${c.staj ? 'Y/YS' : g.avg != null ? `${g.avg.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} <span class="g ${gradeClass(g.letter)}">${g.letter}</span>` : '—'}</div></div>
@@ -462,7 +474,7 @@ function viewCourses() {
     all: ['Tümü', () => true],
     req: ['Devam zorunlu', needsAttendance],
     alt: ['Alttan', (c) => !needsAttendance(c) || c.alis === 'Devamlı Alttan'],
-    lab: ['Laboratuvar', (c) => !!c.lab],
+    lab: [COURSES.some((c) => hasPractice(c) && !c.lab) ? (COURSES.some((c) => c.lab) ? 'Uygulama / lab' : 'Uygulamalı') : 'Laboratuvar', hasPractice],
     new: ['İlk kez', (c) => !historyOf(c).length],
   };
   const q = ui.q.trim().toLocaleLowerCase('tr');
@@ -500,31 +512,42 @@ function drawerHtml(c) {
       return `<button type="button" class="att-cell ${v || ''} ${future ? 'future' : ''} ${si.wk === w ? 'cur' : ''}" data-act="attcycle" data-code="${c.code}" data-w="${w}" data-d="${s.d}" data-from="${s.from}" data-to="${s.to}" aria-label="${lbl}" title="${lbl}">
         <span class="wn">${w}</span>${v === 'var' ? icon('check') : v === 'yok' ? icon('x') : ''}</button>`;
     }).join('');
-    return `<div class="att-sess"><div class="att-sess-h"><b>${DAYS[s.d]}</b> <span class="mono">${timeRange(s)}</span> <span class="muted">· ${hoursOf(s)} saat</span></div><div class="att-weeks">${cells}</div></div>`;
+    return `<div class="att-sess"><div class="att-sess-h"><b>${DAYS[s.d]}</b> <span class="mono">${timeRange(s)}</span> <span class="muted">· ${hoursOf(s)} saat${isMixed(c) ? ` · ${KIND_LABEL[sessionKind(c, s)].toLocaleLowerCase('tr')}` : ''}</span></div><div class="att-weeks">${cells}</div></div>`;
   }).join('');
+  const lvlBadge = (p) => `<span class="badge ${p.lvl === 'danger' ? 'b-danger' : p.lvl === 'warn' ? 'b-warn' : p.lvl === 'ok' ? 'b-ok' : 'b-neutral'}">${!needsAttendance(c) ? 'Takip isteğe bağlı' : p.lvl === 'danger' ? 'Sınır aşıldı' : `${Math.max(p.left, 0)} saat hakkın kaldı`}</span>`;
+  const attSummary = st.mixed
+    ? st.parts.map((p) => `<div class="row between" style="font-size:13.5px;margin:10px 0 6px;gap:8px"><span><b>${p.label}</b> · ${p.abs} saat devamsız · ${p.present} saat katıldın</span><span class="row" style="gap:8px"><span class="muted">Sınır ${p.lim} sa (%${p.pct})</span>${lvlBadge(p)}</span></div>${progressBar(p.lim ? (p.abs / p.lim) * 100 : p.abs ? 100 : 0, p.lvl)}`).join('')
+    : `<div class="row between" style="font-size:13.5px;margin-bottom:6px"><span>${st.abs} saat devamsız · ${st.present} saat katıldın</span><span class="muted">Sınır ${st.lim} sa (%${limitPct(c)})</span></div>
+      ${progressBar(st.lim ? (st.abs / st.lim) * 100 : st.abs ? 100 : 0, st.lvl)}`;
+  const limitRow = st.mixed
+    ? `<div class="help" style="margin:14px 0 10px">Teoride toplam ${st.parts[0].total} saat, uygulamada ${st.parts[1].total} saat (${W} hafta, resmi tatiller hariç). Sınırlar Ayarlar'daki teorik ve uygulama oranlarından gelir.</div>`
+    : `<div class="row wrap" style="margin:14px 0 10px;gap:8px">
+        <label class="field" style="flex-direction:row;align-items:center;gap:8px"><span class="lbl">Devamsızlık sınırı %</span><input class="input" style="width:84px;min-height:36px" type="number" min="0" max="100" value="${limitPct(c)}" data-input="limit" data-code="${c.code}"></label>
+        <span class="help">Toplam ${totalHours(c)} saat (${W} hafta, resmi tatiller hariç)</span>
+      </div>`;
 
   return `
   <header class="dr-head c" style="${cstyle(c)}">
     <button type="button" class="icon-btn close" data-act="close" aria-label="Kapat">${icon('x')}</button>
-    <div class="row wrap" style="gap:6px"><span class="chip-code">${c.code}${c.old ? ` [${c.old}]` : ''}</span>${alisBadge(c)}${c.lab ? `<span class="badge b-neutral">${icon('flask')}Laboratuvar</span>` : ''}<span class="badge b-neutral">${c.sinif}. sınıf</span></div>
+    <div class="row wrap" style="gap:6px"><span class="chip-code">${c.code}${c.old ? ` [${c.old}]` : ''}</span>${alisBadge(c)}${hasPractice(c) ? `<span class="badge b-neutral">${icon('flask')}${practiceLabel(c)}</span>` : ''}<span class="badge b-neutral">${c.sinif}. sınıf</span></div>
     <h2 id="drawerTitle">${esc(c.name)}</h2>
     ${c.staj ? '' : `<div class="row" style="gap:6px;color:var(--text-2);font-size:14px">${icon('user')}${c.teacher ? esc(c.teacher) : 'Öğretim elemanı programda belirtilmemiş'}</div>`}
   </header>
   <div class="dr-body">
     <div class="info-grid">
-      <div class="info"><div class="k">T+U saat</div><div class="v">${c.tu} / hafta</div></div>
+      <div class="info"><div class="k">T+U saat</div><div class="v">${esc(c.tuAyrinti ? `${c.tuAyrinti} (${c.tu})` : c.tu)} / hafta</div></div>
       <div class="info"><div class="k">Kredi</div><div class="v">${c.krd}</div></div>
       <div class="info"><div class="k">AKTS</div><div class="v">${c.akts}</div></div>
       <div class="info span3"><div class="k">Ders saatleri</div>
-        ${ss.map((s) => `<div class="v row wrap" style="gap:8px;margin-top:4px"><span>${DAYS[s.d]}</span><span class="mono">${timeRange(s)}</span><span class="muted" style="font-weight:600">${icon('pin')} ${esc(s.room)}</span></div>`).join('')}
+        ${ss.map((s, i) => `<div class="v row wrap" style="gap:8px;margin-top:4px"><span>${DAYS[s.d]}</span><span class="mono">${timeRange(s)}</span><span class="muted" style="font-weight:600">${icon('pin')} ${esc(s.room)}</span>${isMixed(c) ? `<span class="badge ${sessionKind(c, s) === 'u' ? 'b-info' : 'b-neutral'}">${KIND_LABEL[sessionKind(c, s)]}</span>` : ''}</div>${s.hoca && s.hoca !== c.teacher && s.hoca !== ss[i + 1]?.hoca ? `<div class="help" style="margin:2px 0 4px">${esc(s.hoca)}</div>` : ''}`).join('')}
         ${hasSections(c) ? `<div style="margin-top:10px" class="row wrap"><span class="k">Şube${SECTIONS_KNOWN ? '' : ' (henüz açıklanmadı)'}</span><div class="seg" role="group" aria-label="Şube">${secKeys(c).map((k) => `<button type="button" data-act="sec" data-code="${c.code}" data-sec="${k}" aria-pressed="${state.sections[c.code] === k}">${k}${getOptimal()[c.code] === k ? '<i class="rec" aria-label="önerilen"></i>' : ''}</button>`).join('')}</div></div>` : ''}
       </div>
     </div>
     ${cf.map((x) => { const o = courseByCode[x.a.code === c.code ? x.b.code : x.a.code]; return `<div class="callout ${x.sev === 'kritik' ? 'danger' : x.sev === 'dikkat' ? 'warn' : 'info'}">${icon('alert')}<div><b>${DAYS[x.d]} ${SLOTS[x.from][0]}–${SLOTS[x.to][1]}</b> saatinde <b>${esc(o.name)}</b> ile çakışıyor. ${conflictAdvice(x)}</div></div>`; }).join('')}
     ${c.uyari ? `<div class="callout warn">${icon('pin')}<div>${esc(c.uyari)}</div></div>` : ''}
-    ${c.alis === 'Alttan' ? (repeatRule() === 'bolum'
-      ? `<div class="callout warn">${icon('shield')}<div>Bu dersi <b>alttan</b> alıyorsun. Yönetmelik (md. 20) tekrar alınan derslerde devam şartı aramaz; ancak bölüm kurulu kararıyla bölümdeki tüm derslerde devam zorunlu. Devamsızlığını buna göre takip et.</div></div>`
-      : `<div class="callout info">${icon('info')}<div>Bu dersi <b>alttan</b> alıyorsun. Yönetmelik md. 20'ye göre devam şartı aranmaz; ama ara sınavlara ve nota katkısı olan tüm yarıyıl içi etkinliklere katılman zorunlu.</div></div>`) : ''}
+    ${c.alis === 'Alttan' ? (needsAttendance(c)
+      ? `<div class="callout warn">${icon('shield')}<div>Bu dersi <b>alttan</b> alıyorsun. ${esc(capFirst(ALTTAN.madde))} tekrar alınan derslerde devam şartı aramaz; ancak ${repeatRule() === 'bolum' ? 'bölüm kurulu kararıyla bölümdeki tüm derslerde devam zorunlu' : 'bu derste devam zorunlu kabul ediliyor'}. Devamsızlığını buna göre takip et.</div></div>`
+      : `<div class="callout info">${icon('info')}<div>Bu dersi <b>alttan</b> alıyorsun. ${esc(capFirst(ALTTAN.madde))} uyarınca devam şartı aranmaz; ama ${esc(ALTTAN.yukumluluk)}.</div></div>`) : ''}
 
     ${topics.length ? `<section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('bookOpen')}Çalışılacak konular</h3><button type="button" class="link-btn" data-act="gotoStudy" data-code="${owner.code}">Tümü ${icon('arrow')}</button></div>
@@ -541,29 +564,26 @@ function drawerHtml(c) {
       <div class="card-h"><h3 class="card-t">${icon('flag')}Staj bilgisi</h3></div>
       ${c.study?.icerik ? `<p style="margin:0 0 8px">${esc(c.study.icerik)}</p>` : ''}
       ${c.study?.amac ? `<p class="help" style="margin:0 0 8px"><b>Amaç:</b> ${esc(c.study.amac)}</p>` : ''}
-      <p class="help" style="margin:0">Yönetmelik md. 24: stajlar Y (yeterli) veya YS (yetersiz) ile değerlendirilir ve GNO'ya katılmaz; stajın 5 AKTS'si yarıyıl AKTS sınırının dışındadır (md. 16).${c.study?.not ? ` ${esc(c.study.not)}` : ''}</p>
+      ${METIN.staj ? `<p class="help" style="margin:0">${esc(METIN.staj)}${c.study?.not ? ` ${esc(c.study.not)}` : ''}</p>` : c.study?.not ? `<p class="help" style="margin:0">${esc(c.study.not)}</p>` : ''}
     </section>` : ''}
     ${c.staj || !hasSchedule(c) ? '' : `<section class="card card-pad">
-      <div class="card-h"><h3 class="card-t">${icon('shield')}Devamsızlık</h3>
-        <span class="badge ${st.lvl === 'danger' ? 'b-danger' : st.lvl === 'warn' ? 'b-warn' : st.lvl === 'ok' ? 'b-ok' : 'b-neutral'}">${!needsAttendance(c) ? 'Takip isteğe bağlı' : st.lvl === 'danger' ? 'Sınır aşıldı' : `${Math.max(st.left, 0)} saat hakkın kaldı`}</span></div>
-      <div class="row between" style="font-size:13.5px;margin-bottom:6px"><span>${st.abs} saat devamsız · ${st.present} saat katıldın</span><span class="muted">Sınır ${st.lim} sa (%${limitPct(c)})</span></div>
-      ${progressBar(st.lim ? (st.abs / st.lim) * 100 : 0, st.lvl)}
-      <div class="row wrap" style="margin:14px 0 10px;gap:8px">
-        <label class="field" style="flex-direction:row;align-items:center;gap:8px"><span class="lbl">Devamsızlık sınırı %</span><input class="input" style="width:84px;min-height:36px" type="number" min="0" max="100" value="${limitPct(c)}" data-input="limit" data-code="${c.code}"></label>
-        <span class="help">Toplam ${totalHours(c)} saat (${W} hafta, resmi tatiller hariç)</span>
-      </div>
+      <div class="card-h"><h3 class="card-t">${icon('shield')}Devamsızlık</h3>${st.mixed ? '' : lvlBadge(st)}</div>
+      ${attSummary}
+      ${limitRow}
       ${c.devamNot ? `<p class="help" style="margin:0 0 10px">${esc(c.devamNot)}</p>` : ''}
+      ${KURALLAR.sabahKurali && METIN.sabah && needsAttendance(c) && sessionsFor(c).some((s) => sessionKind(c, s) === 'u' && !c.lab) ? `<div class="callout warn" style="margin:0 0 10px">${icon('alert')}<div>${esc(METIN.sabah)}</div></div>` : ''}
       <div class="help" style="margin-bottom:10px">Hafta kutusuna dokun: boş → <span style="color:var(--ok);font-weight:700">katıldım</span> → <span style="color:var(--danger);font-weight:700">katılmadım</span> → boş.</div>
       <div class="att-grid">${weeks}</div>
     </section>`}
 
     ${c.staj ? '' : `<section class="card card-pad">
-      <div class="card-h"><h3 class="card-t">${icon('target')}Not hesaplama</h3><span class="help">${gp.official ? 'Bilgi paketindeki oranlar' : 'Varsayılan oranlar'}</span></div>
+      <div class="card-h"><h3 class="card-t">${icon('target')}Not hesaplama</h3><span class="help">${gp.official ? 'Bilgi paketindeki oranlar' : KURALLAR.vizeAgirlik != null && state.settings.vizeW === KURALLAR.vizeAgirlik ? 'Yönetmelikteki oranlar' : 'Varsayılan oranlar'}</span></div>
       <div class="grade-inputs">
         ${[...gp.parts, { key: 'but', label: 'Bütünleme', pct: null }].map((p) => `<div class="field"><label for="g-${p.key}">${esc(p.label)}${p.pct != null ? ` <span class="muted">%${p.pct}</span>` : ''}</label><input id="g-${p.key}" class="input" type="number" inputmode="numeric" min="0" max="100" placeholder="—" value="${esc(state.grades[c.code]?.[p.key] ?? '')}" data-input="grade" data-code="${c.code}" data-field="${p.key}"></div>`).join('')}
       </div>
       ${gp.parts.some((p) => p.count > 1) ? '<p class="help" style="margin:8px 0 0">Birden fazla olan bileşenlerde ortalamasını gir.</p>' : ''}
-      <p class="help" style="margin:8px 0 0">Finale girebilmek için ara sınava girmiş olman ve devam şartını sağlaman gerekir (yönetmelik md. 23). Bütünleme notu finalin yerine geçer; devamsızlıktan kalınan derste bütünlemeye girilemez (md. 21).</p>
+      ${METIN.final ? `<p class="help" style="margin:8px 0 0">${esc(METIN.final)}</p>` : ''}
+      ${PRACTICE_MIN && gp.parts.some((p) => p.key === 'uygulama') && METIN.uygulamaBaraji ? `<p class="help" style="margin:8px 0 0">${esc(METIN.uygulamaBaraji)}</p>` : ''}
       <div id="gradeOut" style="margin-top:12px">${gradeOutHtml(c)}</div>
     </section>`}
 
@@ -593,6 +613,9 @@ function drawerHtml(c) {
 
 function gradeOutHtml(c) {
   const g = gradeCalc(c.code);
+  if (g.practiceLow) {
+    return `<div class="callout danger">${icon('alert')}<div><b>Uygulama notun ${fmt1(g.vals.uygulama)}: baraj olan ${PRACTICE_MIN} puanın altında.</b> ${esc(METIN.uygulamaBaraji || 'Bu durumda finale giremezsin.')}</div></div>`;
+  }
   if (g.missing.length) {
     return `<div class="help">${g.anyEntered ? `Finalden kaç alman gerektiğini hesaplamak için ${g.missing.map(esc).join(', ')} notunu da gir.` : `${g.parts.filter((p) => p.key !== 'final').map((p) => esc(p.label)).join(' ve ')} notlarını girdiğinde finalden kaç alman gerektiğini hesaplarım.`}</div>`;
   }
@@ -600,8 +623,9 @@ function gradeOutHtml(c) {
     const n = g.need(L);
     return `<div class="info"><div class="k">${L} için final</div><div class="v">${n > 100 ? '<span class="muted">Mümkün değil</span>' : n}</div></div>`;
   }).join('');
-  return `${g.avg != null ? `<div class="grade-out"><div><div class="help">Ham başarı notu</div><div class="avg">${g.avg.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</div></div><span class="letter ${gradeClass(g.letter)}">${g.letter}</span><div class="help" style="flex:1;min-width:160px">${g.b != null ? 'Bütünleme notu finalin yerine sayıldı. ' : ''}Harf, yönetmelik md. 24'teki mutlak değerlendirme tablosuna göredir. Hoca bağıl değerlendirme kullanırsa harf notu sınıfın dağılımına göre verilir.${g.avg % 1 && state.settings.scale.some((t) => Math.abs(t - g.avg) < 1) ? ' Tablo tam sayı aralıkları verir; küsuratın yuvarlanıp yuvarlanmadığı yönetmelikte yazmadığı için sınırdaki notlarda harf farklı çıkabilir.' : ''}</div></div>` : ''}
-    <div class="info-grid" style="margin-top:10px;grid-template-columns:repeat(4,minmax(0,1fr))">${needs}</div>`;
+  return `${g.avg != null ? `<div class="grade-out"><div><div class="help">Ham başarı notu</div><div class="avg">${g.avg.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</div></div><span class="letter ${gradeClass(g.letter)}">${g.letter}</span><div class="help" style="flex:1;min-width:160px">${g.b != null ? 'Bütünleme notu finalin yerine sayıldı. ' : ''}${g.finalLow ? `<b>${g.b != null ? 'Bütünleme' : 'Final'} notun ${FINAL_MIN} puanın altında olduğu için ortalamadan bağımsız olarak ${LOWEST_LETTER} sayılır.</b> ` : ''}${esc(METIN.harf || 'Harf, mutlak değerlendirme tablosuna göredir.')}${g.avg % 1 && state.settings.scale.some((t) => Math.abs(t - g.avg) < 1) ? ' Tablo tam sayı aralıkları verir; küsuratın yuvarlanıp yuvarlanmadığı yönetmelikte yazmadığı için sınırdaki notlarda harf farklı çıkabilir.' : ''}</div></div>` : ''}
+    <div class="info-grid" style="margin-top:10px;grid-template-columns:repeat(4,minmax(0,1fr))">${needs}</div>
+    ${FINAL_MIN ? `<p class="help" style="margin:8px 0 0">Gereken final notları en az ${FINAL_MIN} puan olarak gösterilir; final ya da bütünleme notu ${FINAL_MIN} puanın altındaysa ders ${LOWEST_LETTER} olur.</p>` : ''}`;
 }
 
 /* ============ ÇALIŞMA ============ */
@@ -691,7 +715,7 @@ function studyCourseHtml(c, scope) {
         ${st.icerik ? `<p><b>İçerik.</b> ${esc(st.icerik)}</p>` : ''}
         ${st.ciktilar?.length ? `<p><b>Bu dersi bitirince:</b></p><ul class="sources">${st.ciktilar.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
       </details>
-      <p class="help sc-src">${st.not ? `${esc(st.not)} ` : ''}Kaynak: ${esc(UNI())} Bologna bilgi paketi (${esc(st.kaynak.kod)}, ${esc(st.kaynak.yil)} müfredatı${st.kaynak.guncelleme ? `, güncelleme ${esc(st.kaynak.guncelleme)}` : ''}) · ${BOLOGNA_URL(st.kaynak.id) ? `<a href="${esc(BOLOGNA_URL(st.kaynak.id))}" target="_blank" rel="noopener noreferrer">Bilgi paketini aç ${icon('external')}</a>` : ''}</p>
+      <p class="help sc-src">${st.not ? `${esc(st.not)} ` : ''}Kaynak: ${esc(UNI())} Bologna bilgi paketi (${esc(st.kaynak.kod)}${st.kaynak.yil ? `, ${esc(st.kaynak.yil)} müfredatı` : ''}${st.kaynak.guncelleme ? `, güncelleme ${esc(st.kaynak.guncelleme)}` : ''}) · ${BOLOGNA_URL(st.kaynak.id) ? `<a href="${esc(BOLOGNA_URL(st.kaynak.id))}" target="_blank" rel="noopener noreferrer">Bilgi paketini aç ${icon('external')}</a>` : ''}</p>
     </div>
   </details>`;
 }
@@ -714,6 +738,7 @@ function viewStudy() {
   const si = semInfo();
   const owners = studyOwners();
   const vizeKnown = owners.filter((c) => vizeInfo(c)).length;
+  const vizeDated = owners.filter((c) => vizeInfo(c)?.source === 'ajanda').length;
   if (!owners.length) {
     return `${studyTabsHtml('calisma')}<div class="card empty" style="margin-top:16px;padding:40px">${icon('bookOpen')}<div>Ders konuları bulunamadı.</div></div>`;
   }
@@ -732,7 +757,7 @@ function viewStudy() {
       <div class="row wrap" style="gap:6px;margin-top:12px">
         ${agg.behind && scope !== 'tekrar' ? `<span class="badge b-warn">${agg.behind} konu geride</span>` : ''}
         ${agg.review ? `<span class="badge b-neutral">${icon('bookmark')}${agg.review} tekrar bekliyor</span>` : ''}
-        <span class="badge ${vizeKnown ? 'b-info' : 'b-neutral'}">Vize tarihi girilen ders: ${vizeKnown}/${owners.length}</span>
+        ${vizeDated || !state.settings.midtermWeek ? `<span class="badge ${vizeDated ? 'b-info' : 'b-neutral'}">Vize tarihi girilen ders: ${vizeDated}/${owners.length}</span>` : ''}${state.settings.midtermWeek && vizeDated < owners.length ? `<span class="badge b-neutral">Ortak vize haftası: ${state.settings.midtermWeek}. hafta</span>` : ''}
       </div>
       <p class="help" style="margin:12px 0 0">"Geride": derste işlenmiş ama henüz çalıştım olarak işaretlemediğin konular. ${esc(TAKVIM?.araSinavNotu || '')} İlan edilince Ajanda'ya dersin vizesini "Vize" türüyle ekle; o dersin vize konuları tarihe göre ayarlanır.</p>
     </section>
@@ -746,7 +771,7 @@ function viewStudy() {
     <button type="button" class="link-btn" style="margin-left:auto" data-act="studyExpand">${ui.studyOpen.size >= owners.length ? 'Tümünü daralt' : 'Tümünü aç'}</button>
   </div>
   <div class="study-list">${owners.map((c) => studyCourseHtml(c, scope)).join('')}</div>
-  <p class="help" style="margin-top:14px">Konular ${esc(UNI())} Bologna bilgi paketindeki 14 haftalık plandan alındı; akademik takvimde ${state.settings.weeks} eğitim haftası var ve hocan sırayı değiştirebilir. Laboratuvarlar teorik dersle aynı konuları izlediğinde ilerleme ortak tutulur.</p>`;
+  <p class="help" style="margin-top:14px">Konular ${esc(UNI())} Bologna bilgi paketindeki haftalık plandan alındı; akademik takvimde ${state.settings.weeks} eğitim haftası var ve hocan sırayı değiştirebilir.${METIN.calisma ? ` ${esc(METIN.calisma)}` : ''}${COURSES.some((c) => c.study?.ortak) ? ' Laboratuvarlar teorik dersle aynı konuları izlediğinde ilerleme ortak tutulur.' : ''}</p>`;
 }
 
 /* ============ AJANDA ============ */
@@ -812,12 +837,13 @@ function chartHtml(sim) {
   const pts = terms.map((t) => ({ label: t.short, gno: t.gno, dno: t.dno, term: t.term }));
   if (sim.count) pts.push({ label: 'Bu dönem*', gno: sim.gno, dno: sim.dno, term: `${STUDENT.term || 'Bu dönem'} (simülasyon)`, proj: true });
   const Wd = 640, Hd = 250, L = 34, R = 14, T = 16, B = 34;
-  const iw = Wd - L - R, ih = Hd - T - B, maxY = 3;
+  const iw = Wd - L - R, ih = Hd - T - B, maxY = Math.max(3, Math.ceil(Math.max(...pts.map((p) => Math.max(p.gno || 0, p.dno || 0))) - 1e-9));
   const x = (i) => L + (iw / pts.length) * (i + 0.5);
   const y = (v) => T + ih - (v / maxY) * ih;
   const bw = Math.min(26, (iw / pts.length) * 0.34);
-  const grid = [0, 1, 2, 3].map((v) => `<line x1="${L}" x2="${Wd - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)" stroke-width="1"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join('');
-  const thr = `<line x1="${L}" x2="${Wd - R}" y1="${y(2)}" y2="${y(2)}" stroke="var(--text-3)" stroke-width="1.2" stroke-dasharray="4 4"/><text x="${L + 6}" y="${y(2) - 6}" text-anchor="start" style="font-weight:600">2,00 · mezuniyet şartı</text>`;
+  const gradGno = KURALLAR.mezuniyetGno ?? 2;
+  const grid = Array.from({ length: maxY + 1 }, (_, v) => v).map((v) => `<line x1="${L}" x2="${Wd - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)" stroke-width="1"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join('');
+  const thr = `<line x1="${L}" x2="${Wd - R}" y1="${y(gradGno)}" y2="${y(gradGno)}" stroke="var(--text-3)" stroke-width="1.2" stroke-dasharray="4 4"/><text x="${L + 6}" y="${y(gradGno) - 6}" text-anchor="start" style="font-weight:600">${fmt2(gradGno)} · mezuniyet şartı</text>`;
   const bars = pts.map((p, i) => `<rect x="${x(i) - bw / 2}" y="${y(p.dno ?? 0)}" width="${bw}" height="${Math.max(0, y(0) - y(p.dno ?? 0))}" rx="4" fill="var(--surface-3)" ${p.proj ? 'stroke="var(--border-strong)" stroke-dasharray="3 3"' : ''}/>`).join('');
   const real = pts.filter((p) => !p.proj);
   const path = real.map((p, i) => `${i ? 'L' : 'M'}${x(i)},${y(p.gno)}`).join(' ');
@@ -827,7 +853,7 @@ function chartHtml(sim) {
   const xl = pts.map((p, i) => `<text x="${x(i)}" y="${Hd - 12}" text-anchor="middle">${p.label}</text>`).join('');
   const hits = pts.map((p, i) => `<rect class="hit" x="${x(i) - iw / pts.length / 2}" y="${T}" width="${iw / pts.length}" height="${ih}" fill="transparent" tabindex="0" data-i="${i}" aria-label="${esc(p.term)}: GNO ${fmt2(p.gno)}, dönem ortalaması ${fmt2(p.dno)}"/>`).join('');
   return `<div style="position:relative" id="chartBox">
-    <svg class="chart" viewBox="0 0 ${Wd} ${Hd}" role="img" aria-label="Dönemlere göre GNO değişimi">${grid}${bars}${thr}<path d="${path}" stroke="var(--primary)" stroke-width="2" fill="none"/>${projPath}${dots}${labels}${xl}${hits}</svg>
+    <svg class="chart" viewBox="0 0 ${Wd} ${Hd}" data-max="${maxY}" role="img" aria-label="Dönemlere göre GNO değişimi">${grid}${bars}${thr}<path d="${path}" stroke="var(--primary)" stroke-width="2" fill="none"/>${projPath}${dots}${labels}${xl}${hits}</svg>
     <div class="chart-tip" id="chartTip" hidden></div>
   </div>
   <script type="application/json" id="chartData">${JSON.stringify(pts).replace(/</g, '\\u003c')}</script>`;
@@ -872,7 +898,7 @@ function viewAcademic() {
         <div class="card-h"><h3 class="card-t">${icon('sparkles')}Not simülatörü</h3><button type="button" class="link-btn" data-act="simFromGrades">Girilen notlardan doldur</button></div>
         <div class="row wrap" style="gap:6px;margin-bottom:12px">
           <span class="help">Hepsini:</span>
-          ${['DD', 'CC', 'CB', 'BB', 'BA'].map((L) => `<button type="button" class="btn btn-sm" data-act="simAll" data-l="${L}">${L}</button>`).join('')}
+          ${['DD', 'CC', 'CB', 'BB', 'BA'].filter((L) => LETTERS.includes(L)).map((L) => `<button type="button" class="btn btn-sm" data-act="simAll" data-l="${L}">${L}</button>`).join('')}
           <button type="button" class="btn btn-sm btn-ghost" data-act="simClear">Temizle</button>
         </div>
         ${simRows}
@@ -898,13 +924,13 @@ function viewAcademic() {
           return l.length ? `<div class="help" style="font-weight:700;margin:6px 0 4px">${sem} yarıyılı dersleri</div>${l.map((x) => `<div class="row between" style="padding:6px 0;border-top:1px dashed var(--border);font-size:14px"><span><span class="mono muted">${x.code}</span> ${esc(x.name)} <span class="muted" style="font-size:12px">· ${curriculumTerm(x.code)}. yarıyıl</span></span><span class="row" style="gap:6px"><span class="muted" style="font-size:12px">${x.akts} AKTS</span><span class="g ${gradeClass(x.grade)}">${x.grade}</span></span></div>`).join('')}` : '';
         }).join('')}
         ${debts.some((x) => !curriculumTerm(x.code)) ? `<div class="help" style="font-weight:700;margin:6px 0 4px">Yarıyılı bilinmeyen</div>${debts.filter((x) => !curriculumTerm(x.code)).map((x) => `<div class="row between" style="padding:6px 0;border-top:1px dashed var(--border);font-size:14px"><span><span class="mono muted">${x.code}</span> ${esc(x.name)}</span><span class="g ${gradeClass(x.grade)}">${x.grade}</span></div>`).join('')}` : ''}
-        <p class="help" style="margin:10px 0 0">Yarıyıllar 2023 müfredatından. Yönetmelik md. 26: FF, FD veya DS aldığın dersi verildiği ilk yarıyılda almak zorundasın; programdan çıkarılan dersler için eşdeğer dersi birim kurulu belirler (md. 26, 31).</p>
+        ${METIN.borc ? `<p class="help" style="margin:10px 0 0">${esc(METIN.borc)}</p>` : ''}
         ${debts.filter((x) => window.DERS_NOTLARI?.[x.code]).map((x) => `<p class="help" style="margin:6px 0 0"><b class="mono">${esc(x.code)}:</b> ${esc(window.DERS_NOTLARI[x.code])}</p>`).join('')}
       </section>
       <section class="card card-pad">
         <div class="card-h"><h3 class="card-t">${icon('info')}Şartlı geçilen dersler</h3><span class="badge b-warn">${cond.length}</span></div>
         <div class="hist">${cond.map((x) => `<span class="badge b-neutral" title="${esc(x.name)}">${x.code} <span class="g g-cond">${x.grade}</span></span>`).join('')}</div>
-        <p class="help" style="margin:10px 0 0">Yönetmelik md. 24: DC veya DD alınan ders, mezuniyet aşamasında GNO 2,00 olmak şartıyla başarılı sayılır. Mezuniyet için en az 2,00 GNO ve 240 AKTS gerekir (md. 31).</p>
+        ${METIN.sartli ? `<p class="help" style="margin:10px 0 0">${esc(METIN.sartli)}</p>` : ''}
       </section>
       <section>
         <h2 class="section-t" style="margin-top:4px">Transkript</h2>
@@ -984,7 +1010,7 @@ function agoText(t) {
 }
 function syncCardHtml() {
   const i = Sync.info;
-  if (!i.configured) return '';
+  if (!i.available && !i.configured) return '';
   const [cls, label] = SYNC_STATUS[i.status] || SYNC_STATUS.yok;
   const head = `<div class="card-h"><h3 class="card-t">${icon('cloud')}Cihazlar arası eşitleme</h3><span class="badge ${cls}">${label}</span></div>`;
   if (!i.available) {
@@ -993,7 +1019,7 @@ function syncCardHtml() {
   const err = i.status === 'hata' && i.lastError ? `<div class="callout danger" style="margin-bottom:12px">${icon('alert')}<div>${esc(i.lastError)}</div></div>` : '';
   if (i.hasToken) {
     return `<section class="card card-pad">${head}${err}
-      <p class="help" style="margin:0 0 12px">Yoklama, not, görev, simülasyon ve ayarların şifrelenerek GitHub'daki gizli kaydına gönderilir; diğer cihazlar kilidi açınca otomatik alır. Son eşitleme: <b>${agoText(i.lastSync)}</b>.</p>
+      <p class="help" style="margin:0 0 12px">Yoklama, not, görev, simülasyon ve ayarların şifrelenerek GitHub'daki gizli kaydına gönderilir; ${i.shared ? 'diğer cihazlar kilidi açınca otomatik alır' : 'diğer cihazlarında anahtarı bir kez yapıştırınca kayıt otomatik bulunur'}. Son eşitleme: <b>${agoText(i.lastSync)}</b>.</p>
       <div class="row wrap">
         <button type="button" class="btn" data-act="syncNow" ${i.status === 'esitleniyor' ? 'disabled' : ''}>${icon('refresh')}Şimdi eşitle</button>
         <button type="button" class="btn btn-ghost" data-act="syncForget">Bu cihazda kapat</button>
@@ -1002,7 +1028,9 @@ function syncCardHtml() {
     </section>`;
   }
   return `<section class="card card-pad sync-setup">${head}${err}
-    <p class="help" style="margin:0 0 12px">Bir kez kurman yeterli: GitHub'da yalnızca <b>Gist</b> izni olan bir erişim anahtarı oluştur ve buraya yapıştır. Anahtar site şifrenle şifrelenip saklanır; diğer cihazlarda sadece site şifreni girmen yeter.</p>
+    ${i.shared
+      ? `<p class="help" style="margin:0 0 12px">Bir kez kurman yeterli: GitHub'da yalnızca <b>Gist</b> izni olan bir erişim anahtarı oluştur ve buraya yapıştır. Anahtar site şifrenle şifrelenip saklanır; diğer cihazlarda sadece site şifreni girmen yeter.</p>`
+      : `<p class="help" style="margin:0 0 12px">Kendi GitHub hesabında yalnızca <b>Gist</b> izni olan bir erişim anahtarı oluşturup buraya yapıştır. Kayıtların şifrelenerek hesabındaki gizli bir Gist'e konur. ${i.configured ? 'Bu cihaz eşitleme kaydını biliyor.' : 'Diğer cihazlarında da aynı anahtarı bir kez yapıştırman yeter; kayıt otomatik bulunur.'}</p>`}
     <ol class="steps">
       <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">GitHub'da yeni erişim anahtarı sayfasını aç ${icon('external')}</a></li>
       <li><b>Token name:</b> Ders Takip eşitleme · <b>Expiration:</b> istediğin süre (süre dolunca anahtarı yenilemen gerekir)</li>
@@ -1038,22 +1066,22 @@ function viewSettings() {
       <div class="card-h"><h3 class="card-t">${icon('shield')}Devamsızlık sınırları</h3></div>
       <div class="grid" style="grid-template-columns:1fr 1fr">
         <div class="field"><label for="sTh">Teorik dersler (%)</label><input id="sTh" class="input" type="number" min="0" max="100" value="${s.theoryLimit}" data-input="setting" data-key="theoryLimit" data-num></div>
-        <div class="field"><label for="sLab">Laboratuvar (%)</label><input id="sLab" class="input" type="number" min="0" max="100" value="${s.labLimit}" data-input="setting" data-key="labLimit" data-num></div>
+        <div class="field"><label for="sLab">Uygulama ve laboratuvar (%)</label><input id="sLab" class="input" type="number" min="0" max="100" value="${s.labLimit}" data-input="setting" data-key="labLimit" data-num></div>
       </div>
-      <p class="help" style="margin:10px 0 0">Yönetmelik md. 20: derslere en az %70, uygulamalara en az %80 devam zorunlu (resmi tatiller eğitim gününden sayılmaz, md. 7). Ders bazında çekmeceden ayrıca değiştirebilirsin.</p>
-      <div class="lbl help" style="margin:14px 0 6px;font-weight:650">Alttan derslerde devam</div>
+      <p class="help" style="margin:10px 0 0">${esc(METIN.devam || '')} Tek türlü derslerde sınırı çekmeceden ayrıca değiştirebilirsin.</p>
+      ${KURALLAR.devamKarari ? `<div class="lbl help" style="margin:14px 0 6px;font-weight:650">Alttan derslerde devam</div>
       <div class="seg" role="group" aria-label="Alttan derslerde devam kuralı">
         <button type="button" data-act="repeatRule" data-rule="bolum" aria-pressed="${repeatRule() === 'bolum'}">Zorunlu (bölüm kararı)</button>
-        <button type="button" data-act="repeatRule" data-rule="yonetmelik" aria-pressed="${repeatRule() === 'yonetmelik'}">Aranmaz (yönetmelik md. 20)</button>
+        <button type="button" data-act="repeatRule" data-rule="yonetmelik" aria-pressed="${repeatRule() === 'yonetmelik'}">Aranmaz (${esc(ALTTAN.madde)})</button>
       </div>
-      <p class="help" style="margin:8px 0 0">${KURALLAR.devamKarari ? `${esc(KURALLAR.devamKarari.ozet)} (${fmtDate(parseDate(KURALLAR.devamKarari.tarih), { day: 'numeric', month: 'long', year: 'numeric' })})${KURALLAR.devamKarari.kapsamNotu ? ` ${esc(KURALLAR.devamKarari.kapsamNotu)}` : ''}` : ''}</p>
+      <p class="help" style="margin:8px 0 0">${esc(KURALLAR.devamKarari.ozet)} (${fmtDate(parseDate(KURALLAR.devamKarari.tarih), { day: 'numeric', month: 'long', year: 'numeric' })})${KURALLAR.devamKarari.kapsamNotu ? ` ${esc(KURALLAR.devamKarari.kapsamNotu)}` : ''}</p>` : ''}
     </section>
     <section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('target')}Not değerlendirme</h3></div>
-      <p class="help" style="margin:0 0 10px">Not, bilgi paketindeki resmi oranlarla hesaplanır. Bu ağırlık yalnızca oranı bilinmeyen derslerde kullanılır; yönetmelik md. 24'e göre final etkisi %40–%60 arasında olmalıdır.</p>
+      <p class="help" style="margin:0 0 10px">Not, bilgi paketindeki resmi oranlarla hesaplanır. Bu ağırlık yalnızca oranı bilinmeyen derslerde kullanılır${METIN.agirlik ? `; ${esc(METIN.agirlik)}` : '.'}</p>
       <div class="field" style="max-width:260px"><label for="sVize">Varsayılan vize ağırlığı (%) — final ${100 - s.vizeW}%</label><input id="sVize" class="input" type="number" min="0" max="100" value="${s.vizeW}" data-input="setting" data-key="vizeW" data-num></div>
-      <div class="lbl help" style="margin:14px 0 6px;font-weight:650">Harf notu alt sınırları — yönetmelik md. 24 mutlak değerlendirme tablosu</div>
-      <div class="scale-grid">${LETTERS.slice(0, 8).map((L, i) => `<div class="field"><label for="sc${i}">${L} ≥</label><input id="sc${i}" class="input" type="number" min="0" max="100" value="${s.scale[i]}" data-input="scale" data-i="${i}"></div>`).join('')}</div>
+      <div class="lbl help" style="margin:14px 0 6px;font-weight:650">Harf notu alt sınırları${METIN.olcek ? ` — ${esc(METIN.olcek)}` : ''}</div>
+      <div class="scale-grid">${LETTERS.slice(0, -1).map((L, i) => `<div class="field"><label for="sc${i}">${L} ≥</label><input id="sc${i}" class="input" type="number" min="0" max="100" value="${s.scale[i]}" data-input="scale" data-i="${i}"></div>`).join('')}</div>
     </section>
     <section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('monitor')}Görünüm</h3></div>

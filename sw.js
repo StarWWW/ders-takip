@@ -1,13 +1,14 @@
 /* Servis çalışanı: uygulamanın internetsiz açılmasını sağlar.
  * - Kendi dosyaları: önce ağ (4 sn zaman aşımı), olmazsa önbellek → güncellemeler hemen gelir, internetsizken son sürüm açılır.
  * - Google Fonts: önce önbellek (yazı tipleri değişmez).
+ * - Hesapların şifreli veri dosyaları (veri/) açıldıkça önbelleğe girer.
  * - GitHub API (eşitleme) hiçbir zaman önbelleğe alınmaz.
  */
-const CACHE = 'ders-takip-v1';
+const CACHE = 'ders-takip-v2';
 const FONT_CACHE = 'ders-takip-fontlar-v1';
 const PRECACHE = [
   './', 'index.html', 'style.css', 'tema.js', 'sabitler.js', 'kilit.js', 'core.js', 'views.js', 'esitle.js', 'app.js',
-  'veri.enc.json', 'manifest.webmanifest',
+  'hesaplar.json', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png', 'icons/favicon-32.png',
 ];
 const NETWORK_TIMEOUT = 4000;

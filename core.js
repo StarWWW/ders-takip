@@ -54,14 +54,40 @@ const fmt1 = (n) => (n == null || isNaN(n) ? '—' : n.toLocaleString('tr-TR', {
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 const courseByCode = Object.fromEntries(COURSES.map((c) => [c.code, c]));
-// Alttan derslerde devam: yönetmelik md. 20 istisna tanır; bölüm kurulu kararı tüm derslerde devamı zorunlu kılar
-const repeatRule = () => (state?.settings?.repeatAttendance === 'yonetmelik' ? 'yonetmelik' : 'bolum');
-const isStaj = (c) => !!c?.staj;
-const needsAttendance = (c) => (isStaj(c) ? false : repeatRule() === 'bolum' ? true : c.alis !== 'Alttan');
-// GNO'ya girenler: stajlar Y/YS ile değerlendirilir, not ortalamasına katılmaz (yönetmelik md. 24)
-const GRADED = COURSES.filter((c) => !c.staj);
+
+/* ============ Üniversiteye özgü kurallar (hesabın şifreli verisinden) ============ */
 const TAKVIM = window.TAKVIM || null;
 const KURALLAR = window.KURALLAR || {};
+const METIN = KURALLAR.metin || {};
+const UNIV = window.UNIVERSITE || {};
+const SLOTS = (() => {
+  const s = UNIV.saatler;
+  const ok = s && typeof s === 'object' && Object.values(s).every((x) => Array.isArray(x) && x.length === 2 && x.every((t) => /^\d{2}:\d{2}$/.test(t)));
+  if (ok) return Object.fromEntries(Object.entries(s).map(([k, v]) => [Number(k), v]));
+  return { 1: ['08:00', '08:50'], 2: ['09:00', '09:50'], 3: ['10:00', '10:50'], 4: ['11:00', '11:50'], 5: ['13:00', '13:50'], 6: ['14:00', '14:50'], 7: ['15:00', '15:50'], 8: ['16:00', '16:50'] };
+})();
+const LUNCH = Array.isArray(UNIV.ogleArasi) && UNIV.ogleArasi.length === 2 ? UNIV.ogleArasi : ['12:00', '13:00'];
+// Öğle arasından sonraki ilk ders saati
+const AFTERNOON_SLOT = Number(Object.keys(SLOTS).find((k) => toMin(SLOTS[k][0]) >= toMin(LUNCH[1]))) || 5;
+const HARFLER = Array.isArray(KURALLAR.harfler) && KURALLAR.harfler.length >= 2 ? KURALLAR.harfler
+  : [['AA', 4, 90], ['BA', 3.5, 80], ['BB', 3, 70], ['CB', 2.5, 60], ['CC', 2, 50], ['DC', 1.5, 45], ['DD', 1, 40], ['FD', 0.5, 30], ['FF', 0, 0]];
+const LETTERS = HARFLER.map((h) => h[0]);
+const LOWEST_LETTER = LETTERS[LETTERS.length - 1];
+const GRADE_POINTS = Object.fromEntries([...HARFLER, ...(KURALLAR.digerNotlar || [])].map((h) => [h[0], Number(h[1])]));
+const FAIL_GRADES = KURALLAR.basarisiz || ['FD', 'FF'];
+const COND_GRADES = KURALLAR.sartli || ['DC', 'DD'];
+const FINAL_MIN = Number(KURALLAR.finalBaraji) || 0;
+const PRACTICE_MIN = Number(KURALLAR.uygulamaBaraji) || 0;
+const ALTTAN = { madde: 'yönetmelik', baslik: 'Daha önce devamını sağladığın alttan derslerde devam şartı yok', yukumluluk: 'ara sınavlara katılman gerekir', ...(KURALLAR.alttan || {}) };
+const capFirst = (s) => (s ? s.charAt(0).toLocaleUpperCase('tr') + s.slice(1) : '');
+const maddeKisa = (s) => (String(s).match(/md\.\s*[\d/, –-]+/) || [s])[0].trim();
+
+// Alttan derslerde devam: yönetmelik istisna tanıyabilir; bölüm kurulu kararı tüm derslerde devamı zorunlu kılabilir
+const repeatRule = () => (!KURALLAR.devamKarari || state?.settings?.repeatAttendance === 'yonetmelik' ? 'yonetmelik' : 'bolum');
+const isStaj = (c) => !!c?.staj;
+const needsAttendance = (c) => (isStaj(c) ? false : repeatRule() === 'bolum' || KURALLAR.alttanMuaf === false ? true : c.alis !== 'Alttan');
+// GNO'ya girenler: stajlar başarılı/başarısız ile değerlendirilir, not ortalamasına katılmaz
+const GRADED = COURSES.filter((c) => !c.staj);
 const secKeys = (c) => Object.keys(c.sections);
 const hasSections = (c) => secKeys(c).length > 1;
 const cstyle = (c) => `--h:${c.hue}`;
@@ -111,13 +137,17 @@ const durText = (min) => {
 };
 
 /* ============ Durum ============ */
-const STORE_KEY = 'dersTakip.v1';
+// Her hesabın kayıtları kendi anahtar önekiyle saklanır (aynı cihazda birden fazla kullanıcı karışmasın)
+const DEPO = window.HESAP?.depo || 'dersTakip';
+const STORE_KEY = `${DEPO}.v1`;
 const TASK_TYPES = ['Ödev', 'Vize', 'Final', 'Quiz', 'Proje', 'Sunum', 'Diğer'];
 const DEFAULT_SETTINGS = {
-  start: TAKVIM?.baslangic || '2026-09-14', weeks: TAKVIM?.hafta || 15, midtermWeek: null, vizeW: 40, theoryLimit: 30, labLimit: 20, theme: 'system',
+  start: TAKVIM?.baslangic || '2026-09-14', weeks: TAKVIM?.hafta || 15,
+  midtermWeek: Number.isInteger(TAKVIM?.araSinavHaftasi) ? TAKVIM.araSinavHaftasi : null,
+  vizeW: KURALLAR.vizeAgirlik ?? 40, theoryLimit: KURALLAR.devam?.teori ?? 30, labLimit: KURALLAR.devam?.uygulama ?? 20, theme: 'system',
   repeatAttendance: KURALLAR.devamKarari && !KURALLAR.devamKarari.alttanHaric ? 'bolum' : 'yonetmelik',
-  scale: [90, 80, 70, 60, 50, 45, 40, 30], // Yönetmelik md. 24 mutlak değerlendirme: AA BA BB CB CC DC DD FD alt sınırları
-  targetGno: 2.0,
+  scale: HARFLER.slice(0, -1).map((h) => Number(h[2])), // mutlak değerlendirme tablosu: son harf dışındaki harflerin alt sınırları
+  targetGno: KURALLAR.mezuniyetGno ?? 2.0,
 };
 const defaultState = () => ({
   v: 4, sections: null, appliedDataSections: null, attendance: {}, grades: {}, sim: {}, tasks: [], notes: {}, limitOverride: {}, study: {},
@@ -135,16 +165,16 @@ function sanitizeState(s) {
   const st = isObj(s.settings) ? s.settings : {};
   const S = out.settings;
   S.start = ISO_DATE.test(st.start) ? st.start : DEFAULT_SETTINGS.start;
-  S.weeks = Math.round(numOr(st.weeks, 14, 1, 20));
-  S.midtermWeek = numOr(st.midtermWeek, null, 2, 20);
+  S.weeks = Math.round(numOr(st.weeks, DEFAULT_SETTINGS.weeks, 1, 20));
+  S.midtermWeek = 'midtermWeek' in st ? numOr(st.midtermWeek, null, 2, 20) : DEFAULT_SETTINGS.midtermWeek;
   if (S.midtermWeek != null) S.midtermWeek = Math.round(S.midtermWeek);
   S.repeatAttendance = ['bolum', 'yonetmelik'].includes(st.repeatAttendance) ? st.repeatAttendance : DEFAULT_SETTINGS.repeatAttendance;
-  S.vizeW = numOr(st.vizeW, 40, 0, 100);
-  S.theoryLimit = numOr(st.theoryLimit, 30, 0, 100);
-  S.labLimit = numOr(st.labLimit, 20, 0, 100);
+  S.vizeW = numOr(st.vizeW, DEFAULT_SETTINGS.vizeW, 0, 100);
+  S.theoryLimit = numOr(st.theoryLimit, DEFAULT_SETTINGS.theoryLimit, 0, 100);
+  S.labLimit = numOr(st.labLimit, DEFAULT_SETTINGS.labLimit, 0, 100);
   S.theme = ['system', 'light', 'dark'].includes(st.theme) ? st.theme : 'system';
-  if (Array.isArray(st.scale) && st.scale.length === 8) S.scale = st.scale.map((v, i) => numOr(v, DEFAULT_SETTINGS.scale[i], 0, 100));
-  S.targetGno = numOr(st.targetGno, 2, 0, 4);
+  if (Array.isArray(st.scale) && st.scale.length === DEFAULT_SETTINGS.scale.length) S.scale = st.scale.map((v, i) => numOr(v, DEFAULT_SETTINGS.scale[i], 0, 100));
+  S.targetGno = numOr(st.targetGno, DEFAULT_SETTINGS.targetGno, 0, 4);
   // v1'de dönem başlangıcı tahmini 21 Eylül'dü; gerçek tarih 14 Eylül
   if ((Number(s.v) || 1) < 2 && st.start === '2026-09-21') S.start = '2026-09-14';
   // v2'deki doğrulanmamış varsayılanlar: 14 hafta, 8. hafta vize, yanlış harf aralıkları → resmi değerler
@@ -171,7 +201,7 @@ function sanitizeState(s) {
     for (const [code, m] of Object.entries(s.attendance)) {
       if (!courseByCode[code] || !isObj(m)) continue;
       const mm = {};
-      for (const [k, v] of Object.entries(m)) if (/^\d{1,2}\|[0-4]\|[1-8]\|[1-8]$/.test(k) && (v === 'var' || v === 'yok')) mm[k] = v;
+      for (const [k, v] of Object.entries(m)) if (/^\d{1,2}\|[0-4]\|\d{1,2}\|\d{1,2}$/.test(k) && (v === 'var' || v === 'yok')) mm[k] = v;
       out.attendance[code] = mm;
     }
   }
@@ -227,7 +257,7 @@ let saveOk = true;
  * Durum, küçük anahtarlara düzleştirilir (ör. "att~DERS101~3|3|3|4"). Her anahtarın son değişme zamanı
  * syncMeta'da tutulur; birleştirmede anahtar bazında en yeni değer kazanır, silinenler de zamanla işaretlenir.
  */
-const META_STORE = 'dersTakip.meta';
+const META_STORE = `${DEPO}.meta`;
 const SYNC_SETTINGS = ['start', 'weeks', 'midtermWeek', 'repeatAttendance', 'vizeW', 'theoryLimit', 'labLimit', 'scale', 'targetGno']; // tema cihaza özeldir
 const SYNC_KEY_RE = /^(att|grade|sim|note|limit|sec|set|task|study)~[^~]+(~[^~]+)?$/;
 function flattenState(st) {
@@ -256,7 +286,11 @@ function applySyncValue(st, key, raw) {
     case 'note': setIn(st.notes, a, v); break;
     case 'limit': setIn(st.limitOverride, a, v); break;
     case 'sec': st.sections = st.sections || {}; setIn(st.sections, a, v); break;
-    case 'set': if (v !== undefined && SYNC_SETTINGS.includes(a)) st.settings[a] = v; break;
+    case 'set':
+      if (!SYNC_SETTINGS.includes(a)) break;
+      if (v !== undefined) st.settings[a] = v;
+      else if (a === 'midtermWeek') st.settings[a] = null; // isteğe bağlı ayar başka cihazda temizlenmiş
+      break;
     case 'task': {
       const i = st.tasks.findIndex((t) => t.id === a);
       if (v === undefined) { if (i >= 0) st.tasks.splice(i, 1); } else if (i >= 0) st.tasks[i] = v; else st.tasks.push(v);
@@ -399,8 +433,8 @@ if (!state.sections || COURSES.some((c) => hasSections(c) && !state.sections[c.c
 const conflictsOfCourse = (code, list) => (list || findConflicts(state.sections)).filter((c) => c.a.code === code || c.b.code === code);
 const SEV_META = {
   kritik: { label: 'Kritik', cls: 'b-danger', desc: 'İki ders de devam zorunlu' },
-  dikkat: { label: 'Dikkat', cls: 'b-warn', desc: 'Birinde devam şartı yok (yönetmelik md. 20)' },
-  dusuk: { label: 'Düşük', cls: 'b-neutral', desc: 'İkisinde de devam şartı yok (yönetmelik md. 20)' },
+  dikkat: { label: 'Dikkat', cls: 'b-warn', desc: `Birinde devam şartı yok (${ALTTAN.madde})` },
+  dusuk: { label: 'Düşük', cls: 'b-neutral', desc: `İkisinde de devam şartı yok (${ALTTAN.madde})` },
 };
 
 /* ============ Akademik takvim ve tatiller ============ */
@@ -428,7 +462,8 @@ function conflictBudget(cf) {
     if (!sessionHoliday(date, { d: cf.d, from: cf.from, to: cf.to })) overlap += cf.hours;
   }
   const A = courseByCode[cf.a.code], B = courseByCode[cf.b.code];
-  const limA = limitHours(A), limB = limitHours(B);
+  // Teori ve uygulaması ayrı sınırlı derslerde çakışan oturumun türündeki hak kullanılır
+  const limA = limitHours(A, sessionKind(A, cf.a)), limB = limitHours(B, sessionKind(B, cf.b));
   const reqA = needsAttendance(A), reqB = needsAttendance(B);
   const allowance = (reqA ? limA : Infinity) + (reqB ? limB : Infinity);
   return { overlap, limA, limB, feasible: allowance >= overlap };
@@ -436,37 +471,72 @@ function conflictBudget(cf) {
 
 /* ============ Devamsızlık ============ */
 const attKey = (w, s) => `${w}|${s.d}|${s.from}|${s.to}`;
+// Oturum türü: t = teorik ders, u = uygulama/laboratuvar (devamsızlık sınırları ayrı)
+const KIND_LABEL = { t: 'Teori', u: 'Uygulama' };
+const sessionKind = (c, s) => (s?.tur === 'u' || s?.tur === 't' ? s.tur : c?.lab ? 'u' : 't');
+function kindAt(c, d, from, to) {
+  for (const list of Object.values(c.sections)) for (const s of list) if (s.d === d && s.from === from && s.to === to) return sessionKind(c, s);
+  return sessionKind(c, null);
+}
+function courseKinds(c) {
+  const set = new Set(sessionsFor(c).map((s) => sessionKind(c, s)));
+  const kinds = ['t', 'u'].filter((k) => set.has(k));
+  return kinds.length ? kinds : [sessionKind(c, null)];
+}
+const isMixed = (c) => courseKinds(c).length > 1;
+const hasPractice = (c) => !!c.lab || Object.values(c.sections).some((l) => l.some((s) => s.tur === 'u'));
+const practiceLabel = (c) => (c.lab ? 'Laboratuvar' : 'Uygulama');
+
 function getAtt(code, w, s) { return state.attendance[code]?.[attKey(w, s)] || null; }
+// Dönen liste: kural gereği kendiliğinden "yok" yazılan oturumlar
 function setAtt(code, w, s, val) {
   state.attendance[code] = state.attendance[code] || {};
-  if (val) state.attendance[code][attKey(w, s)] = val; else delete state.attendance[code][attKey(w, s)];
+  const m = state.attendance[code];
+  if (val) m[attKey(w, s)] = val; else delete m[attKey(w, s)];
+  const auto = [];
+  const c = courseByCode[code];
+  // Uygulamaya sabah gelinmeyen gün öğleden sonraki uygulama da yok yazılır (kural hesabın verisinde tanımlıysa)
+  if (val === 'yok' && KURALLAR.sabahKurali && c && s.from < AFTERNOON_SLOT && kindAt(c, s.d, s.from, s.to) === 'u') {
+    for (const x of sessionsFor(c)) {
+      if (x.d !== s.d || x.from < AFTERNOON_SLOT || sessionKind(c, x) !== 'u' || m[attKey(w, x)] === 'yok') continue;
+      m[attKey(w, x)] = 'yok';
+      auto.push(x);
+    }
+  }
   save();
+  return auto;
 }
-function attHours(code, val) {
+function attHours(code, val, kind) {
+  const c = courseByCode[code];
   let h = 0;
   for (const [k, v] of Object.entries(state.attendance[code] || {})) {
     if (v !== val) continue;
     const p = k.split('|').map(Number);
+    if (kind && c && kindAt(c, p[1], p[2], p[3]) !== kind) continue;
     h += p[3] - p[2] + 1;
   }
   return h;
 }
-const limitPct = (c) => state.limitOverride[c.code] ?? (c.lab ? state.settings.labLimit : state.settings.theoryLimit);
-function totalHours(c) {
+const defaultLimit = (kind) => (kind === 'u' ? state.settings.labLimit : state.settings.theoryLimit);
+// Ders bazında elle girilen sınır yalnızca tek türlü derslerde geçerlidir
+const limitPct = (c, kind = courseKinds(c)[0]) => (isMixed(c) ? defaultLimit(kind) : state.limitOverride[c.code] ?? defaultLimit(kind));
+function totalHours(c, kind) {
   let h = 0;
-  const ss = sessionsFor(c);
+  const ss = sessionsFor(c).filter((s) => !kind || sessionKind(c, s) === kind);
   for (let w = 1; w <= state.settings.weeks; w++) for (const s of ss) if (!sessionHoliday(dateOfWeekDay(w, s.d), s)) h += hoursOf(s);
   return h;
 }
-const limitHours = (c) => Math.floor((totalHours(c) * limitPct(c)) / 100);
+const limitHours = (c, kind) => Math.floor((totalHours(c, kind) * limitPct(c, kind)) / 100);
 function attStatus(c) {
-  const abs = attHours(c.code, 'yok'), lim = limitHours(c), left = lim - abs;
-  const ratio = lim ? abs / lim : 0;
-  let lvl = 'ok';
-  if (!needsAttendance(c)) lvl = 'muted';
-  else if (abs > lim) lvl = 'danger';
-  else if (ratio >= 0.7) lvl = 'warn';
-  return { abs, lim, left, ratio, lvl, present: attHours(c.code, 'var') };
+  const req = needsAttendance(c);
+  const parts = courseKinds(c).map((kind) => {
+    const abs = attHours(c.code, 'yok', kind), lim = limitHours(c, kind);
+    const ratio = lim ? abs / lim : abs ? 2 : 0;
+    const lvl = !req ? 'muted' : abs > lim ? 'danger' : ratio >= 0.7 ? 'warn' : 'ok';
+    return { kind, label: KIND_LABEL[kind], abs, lim, left: lim - abs, ratio, lvl, pct: limitPct(c, kind), total: totalHours(c, kind), present: attHours(c.code, 'var', kind) };
+  });
+  const worst = parts.reduce((a, b) => (b.ratio > a.ratio ? b : a));
+  return { ...worst, present: attHours(c.code, 'var'), parts, mixed: parts.length > 1 };
 }
 
 /* ============ Notlar ============ */
@@ -474,7 +544,7 @@ const num = (v) => (v === '' || v == null || isNaN(Number(v)) ? null : Number(v)
 function letterOf(score) {
   const sc = state.settings.scale;
   for (let i = 0; i < sc.length; i++) if (score >= sc[i]) return LETTERS[i];
-  return 'FF';
+  return LOWEST_LETTER;
 }
 // Değerlendirme bileşenleri: bilgi paketindeki resmi oranlar, yoksa Ayarlar'daki vize/final ağırlığı
 function gradeParts(c) {
@@ -499,12 +569,17 @@ function gradeCalc(code) {
   const others = parts.filter((p) => p.key !== 'final');
   const missing = others.filter((p) => vals[p.key] == null).map((p) => p.label);
   const othersSum = others.reduce((s, p) => s + ((vals[p.key] ?? 0) * p.pct) / 100, 0);
+  // Uygulama notu barajın altındaysa finale girilemez; final/bütünleme notu barajın altındaysa ders notu en düşük harftir
+  const practiceLow = !!PRACTICE_MIN && vals.uygulama != null && vals.uygulama < PRACTICE_MIN;
+  const finalLow = !!FINAL_MIN && eff.final != null && eff.final < FINAL_MIN;
   const need = (letter) => {
-    if (missing.length || !fin) return null;
+    if (missing.length || !fin || practiceLow) return null;
     const thr = state.settings.scale[LETTERS.indexOf(letter)];
-    return clamp(Math.ceil((thr - othersSum) / (fin.pct / 100) - 1e-9), 0, 999);
+    return clamp(Math.max(Math.ceil((thr - othersSum) / (fin.pct / 100) - 1e-9), FINAL_MIN), 0, 999);
   };
-  return { official, parts, vals, v: vals.vize ?? null, f: vals.final ?? null, b, avg, letter: avg != null ? letterOf(avg) : null, need, missing, anyEntered: others.some((p) => vals[p.key] != null) };
+  let letter = avg != null ? letterOf(avg) : null;
+  if (letter && (finalLow || practiceLow)) letter = LOWEST_LETTER;
+  return { official, parts, vals, v: vals.vize ?? null, f: vals.final ?? null, b, avg, letter, need, missing, finalLow, practiceLow, anyEntered: others.some((p) => vals[p.key] != null) };
 }
 
 /* ============ Çalışma konuları ============ */
@@ -547,7 +622,7 @@ function studyStats(c, scope) {
   }
   return { total: list.length, done, review, behind };
 }
-const gradeClass = (L) => (!L ? 'g-none' : ['FD', 'FF', 'DS'].includes(L) ? 'g-fail' : ['DC', 'DD'].includes(L) ? 'g-cond' : 'g-pass');
+const gradeClass = (L) => (!L ? 'g-none' : FAIL_GRADES.includes(L) || L === LOWEST_LETTER ? 'g-fail' : COND_GRADES.includes(L) ? 'g-cond' : 'g-pass');
 
 /* ============ GNO ============ */
 function latestMap() {
@@ -557,7 +632,10 @@ function latestMap() {
 }
 function gpaOf(map) {
   let pts = 0, akts = 0;
-  for (const x of map.values()) { pts += x.akts * GRADE_POINTS[x.grade]; akts += x.akts; }
+  for (const x of map.values()) {
+    if (!(x.grade in GRADE_POINTS)) continue; // ortalamaya girmeyen notlar (ör. muaf, başarılı/başarısız)
+    pts += x.akts * GRADE_POINTS[x.grade]; akts += x.akts;
+  }
   return { pts, akts, gno: akts ? pts / akts : 0 };
 }
 const CURRENT = gpaOf(latestMap());
@@ -592,16 +670,16 @@ function requiredDno(target) {
   return (target * (BASE.akts + SEM_AKTS) - BASE.pts) / SEM_AKTS;
 }
 function nearestLetter(gp) {
-  let best = 'FF';
+  let best = LOWEST_LETTER;
   for (const L of LETTERS) if (GRADE_POINTS[L] >= gp - 1e-9) best = L;
   return best; // gp'yi karşılayan en düşük harf
 }
 const curriculumTerm = (code) => window.MUFREDAT_YARIYIL?.[code] || null;
 function remainingDebts() {
   const taking = new Set(COURSES.flatMap((c) => [c.code, c.old].filter(Boolean)));
-  return [...latestMap().values()].filter((x) => ['FF', 'FD', 'DS'].includes(x.grade) && !taking.has(x.code));
+  return [...latestMap().values()].filter((x) => (FAIL_GRADES.includes(x.grade) || x.grade === LOWEST_LETTER) && !taking.has(x.code));
 }
-const conditionalPasses = () => [...latestMap().values()].filter((x) => ['DC', 'DD'].includes(x.grade));
+const conditionalPasses = () => [...latestMap().values()].filter((x) => COND_GRADES.includes(x.grade));
 
 /* ============ Toast ============ */
 function toast(msg, action) {

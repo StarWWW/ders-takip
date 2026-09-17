@@ -266,6 +266,7 @@ textarea.input { min-height: 96px; resize: vertical; line-height: 1.5; }
 .risk-row:first-child { border-top: 0; padding-top: 0; }
 .risk-row .nm { font-weight: 650; font-size: 14px; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .risk-row .nm span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.risk-row .nm-sub { flex: none; font-size: 12px; font-weight: 650; color: var(--text-3); }
 .risk-row .num { font-size: 12.5px; color: var(--text-2); font-weight: 600; }
 .risk-row .progress { grid-column: 1 / -1; }
 .lvl-ok > i { background: var(--ok) !important; }

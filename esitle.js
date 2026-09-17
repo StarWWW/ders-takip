@@ -1,21 +1,26 @@
 /* Cihazlar arası otomatik eşitleme (GitHub Gist).
  *
  * - Gizli Gist'te iki dosya: durum.enc.json (kayıtlar) ve erisim.enc.json (GitHub erişim anahtarı).
- * - İkisi de site şifresinden türetilen AES-256-GCM anahtarıyla şifrelenir; Gist'i gören biri içeriği okuyamaz.
- * - Erişim anahtarı bir kez girilir; şifreli hâli Gist'e konur, diğer cihazlar kilidi açınca otomatik alır.
+ * - İkisi de hesabın site şifresinden türetilen AES-256-GCM anahtarıyla şifrelenir; Gist'i gören biri içeriği okuyamaz.
+ * - Gist kimliği hesabın şifreli verisinde (sync.gistId) varsa erişim anahtarı bir kez girilir; diğer cihazlar kilidi açınca otomatik alır.
+ * - Kimlik yoksa (ör. yeni kullanıcı): anahtar girilince kullanıcının kendi Gist'leri arasında bu hesabın anahtarıyla
+ *   çözülebilen kayıt aranır, bulunamazsa yeni gizli Gist oluşturulur; kimlik bu cihazda saklanır.
  * - Birleştirme core.js'deki mergeRemote ile anahtar bazında "en yeni kazanır" mantığıyla yapılır.
  */
 const Sync = (() => {
   const API = 'https://api.github.com';
   const STATE_FILE = 'durum.enc.json';
   const TOKEN_FILE = 'erisim.enc.json';
-  const TOKEN_STORE = 'dersTakip.erisim';
-  const cfg = window.SYNC_CONFIG && /^[0-9a-f]{20,40}$/i.test(window.SYNC_CONFIG.gistId || '') ? window.SYNC_CONFIG : null;
+  const TOKEN_STORE = `${DEPO}.erisim`;
+  const GIST_STORE = `${DEPO}.gist`;
+  const validId = (s) => typeof s === 'string' && /^[0-9a-f]{20,40}$/i.test(s);
+  const dataGist = validId(window.SYNC_CONFIG?.gistId) ? window.SYNC_CONFIG.gistId : null;
   const key = window.DATA_KEY || null;
+  let gistId = dataGist || (() => { try { const g = localStorage.getItem(GIST_STORE); return validId(g) ? g : null; } catch (e) { return null; } })();
 
   let token = null;
-  let status = !cfg ? 'yok' : !key ? 'yerel' : 'baslatiliyor';
-  let lastSync = null, lastError = '', busy = false, again = false, pushTimer = null, pollTimer = null;
+  let status = !key ? (gistId ? 'yerel' : 'yok') : gistId ? 'baslatiliyor' : 'kurulum';
+  let lastSync = null, lastError = '', busy = false, again = false, pushTimer = null;
   const listeners = new Set();
 
   const b64d = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
@@ -54,12 +59,30 @@ const Sync = (() => {
   }
   async function fileContent(f) {
     if (!f) return null;
-    if (!f.truncated) return f.content;
+    if (!f.truncated && typeof f.content === 'string') return f.content;
     const r = await fetch(f.raw_url, { cache: 'no-store' });
     return r.ok ? r.text() : null;
   }
-  const getGist = (auth = true) => api(`/gists/${cfg.gistId}`, { auth });
+  const getGist = (auth = true) => api(`/gists/${gistId}`, { auth });
   const parseBlob = (text) => { try { const j = JSON.parse(text); return j && j.iv && j.ct ? j : null; } catch (e) { return null; } };
+  const rememberGist = (id) => { gistId = id; try { localStorage.setItem(GIST_STORE, id); } catch (e) { /* yok say */ } };
+
+  // Bu hesabın kaydını kullanıcının Gist'leri arasında bulur (kayıt bu hesabın anahtarıyla çözülebilmeli); yoksa oluşturur
+  async function findOrCreateGist() {
+    for (let page = 1; page <= 5; page++) {
+      const list = await api(`/gists?per_page=100&page=${page}`);
+      for (const g of list) {
+        if (!g.files?.[STATE_FILE]) continue;
+        const blob = parseBlob(await fileContent(g.files[STATE_FILE]));
+        if (!blob) continue;
+        try { await decrypt(blob); rememberGist(g.id); return; } catch (e) { /* başka bir hesabın kaydı */ }
+      }
+      if (list.length < 100) break;
+    }
+    const blob = await encrypt(syncSnapshot());
+    const created = await api('/gists', { method: 'POST', body: { description: 'Ders Takip eşitleme', public: false, files: { [STATE_FILE]: { content: JSON.stringify(blob) } } } });
+    rememberGist(created.id);
+  }
 
   async function loadLocalToken() {
     try {
@@ -80,11 +103,11 @@ const Sync = (() => {
 
   async function push(extraFiles = {}) {
     const blob = await encrypt(syncSnapshot());
-    await api(`/gists/${cfg.gistId}`, { method: 'PATCH', body: { files: { [STATE_FILE]: { content: JSON.stringify(blob) }, ...extraFiles } } });
+    await api(`/gists/${gistId}`, { method: 'PATCH', body: { files: { [STATE_FILE]: { content: JSON.stringify(blob) }, ...extraFiles } } });
   }
 
   async function run() {
-    if (!cfg || !key) return;
+    if (!gistId || !key) return;
     if (busy) { again = true; return; }
     busy = true;
     if (!token) await loadLocalToken();
@@ -119,7 +142,7 @@ const Sync = (() => {
   }
 
   function schedulePush() {
-    if (!cfg || !key || !token) return;
+    if (!gistId || !key || !token) return;
     clearTimeout(pushTimer);
     if (!navigator.onLine) { setStatus('cevrimdisi'); return; }
     setStatus('bekliyor');
@@ -127,12 +150,13 @@ const Sync = (() => {
   }
 
   async function setup(newToken) {
-    if (!cfg || !key) throw new Error('Eşitleme bu modda kullanılamaz');
+    if (!key) throw new Error('Eşitleme bu modda kullanılamaz');
     const t = String(newToken || '').trim();
     if (!/^(github_pat_|ghp_|gho_)[A-Za-z0-9_]{20,}$/.test(t)) throw new Error('Bu bir GitHub erişim anahtarına benzemiyor');
     const prev = token;
     token = t;
     try {
+      if (!gistId) await findOrCreateGist();
       await getGist(true); // okuma izni
       const tokenBlob = await encrypt({ t });
       await push({ [TOKEN_FILE]: { content: JSON.stringify(tokenBlob) } }); // yazma izni + anahtarı paylaş
@@ -147,24 +171,24 @@ const Sync = (() => {
   function forgetDevice() {
     token = null;
     try { localStorage.removeItem(TOKEN_STORE); } catch (e) { /* yok say */ }
-    setStatus(cfg && key ? 'kurulum' : status);
+    setStatus(key ? 'kurulum' : status);
   }
 
   async function disableEverywhere() {
-    if (!token) throw new Error('Önce eşitlemenin açık olması gerekir');
-    await api(`/gists/${cfg.gistId}`, { method: 'PATCH', body: { files: { [TOKEN_FILE]: null } } });
+    if (!token || !gistId) throw new Error('Önce eşitlemenin açık olması gerekir');
+    await api(`/gists/${gistId}`, { method: 'PATCH', body: { files: { [TOKEN_FILE]: null } } });
     forgetDevice();
   }
 
   function start() {
-    if (!cfg || !key) { setStatus(status); return; }
+    if (!key) { setStatus(status); return; }
     window.onLocalChange = schedulePush;
     run();
     const poll = () => { if (document.visibilityState === 'visible' && token) run(); };
     document.addEventListener('visibilitychange', poll);
     window.addEventListener('online', () => run());
-    window.addEventListener('offline', () => setStatus('cevrimdisi'));
-    pollTimer = setInterval(poll, 60000);
+    window.addEventListener('offline', () => { if (gistId) setStatus('cevrimdisi'); });
+    setInterval(poll, 60000);
     // Sayfadan çıkarken bekleyen değişikliği gönder
     window.addEventListener('pagehide', () => { if (pushTimer && token) { clearTimeout(pushTimer); run(); } });
   }
@@ -172,6 +196,6 @@ const Sync = (() => {
   return {
     start, run, setup, forgetDevice, disableEverywhere,
     onChange: (fn) => listeners.add(fn),
-    get info() { return { status, lastSync, lastError, hasToken: !!token, available: !!(cfg && key), configured: !!cfg }; },
+    get info() { return { status, lastSync, lastError, hasToken: !!token, available: !!key, configured: !!gistId, shared: !!dataGist }; },
   };
 })();
