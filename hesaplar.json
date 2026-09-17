@@ -11,6 +11,16 @@
         "ct": "6Z9/rMBoQuJNWoMrWsCAVoZOuZJTF43gTFbQDHS6C88h3m28FDK8RmzRW30g"
       },
       "depo": "dersTakip"
+    },
+    {
+      "id": "fd8ae2c52ae0",
+      "dosya": "veri/fd8ae2c52ae0.enc.json",
+      "salt": "/wIJXLKLfMFc0CPIYyTllg==",
+      "iter": 600000,
+      "kontrol": {
+        "iv": "HQBwkQtDkBivvIIf",
+        "ct": "BveNMCgUUiL/ID8eWt7Fj0Som+ZvN+DiiwWHzzV+R5PZAFBxu7u6Gxkoz1ZO"
+      }
     }
   ]
 }
