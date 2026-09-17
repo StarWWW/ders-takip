@@ -244,11 +244,11 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'simAll':
-      COURSES.forEach((c) => (state.sim[c.code] = el.dataset.l)); save(); render(); break;
+      GRADED.forEach((c) => (state.sim[c.code] = el.dataset.l)); save(); render(); break;
     case 'simClear': state.sim = {}; save(); render(); break;
     case 'simFromGrades': {
       let n = 0;
-      COURSES.forEach((c) => { const g = gradeCalc(c.code); if (g.letter) { state.sim[c.code] = g.letter; n++; } });
+      GRADED.forEach((c) => { const g = gradeCalc(c.code); if (g.letter) { state.sim[c.code] = g.letter; n++; } });
       save(); render();
       toast(n ? `${n} ders girilen notlardan dolduruldu` : 'Henüz vize ve final notu girilmiş ders yok');
       break;

@@ -32,6 +32,7 @@ function semInfo(n = now()) {
   return { wk, W, before: wk < 1, after: wk > W, inSem: wk >= 1 && wk <= W };
 }
 function alisBadge(c) {
+  if (c.staj) return `<span class="badge b-info">${icon('flag')}Staj</span>`;
   if (c.alis === 'Zorunlu') return `<span class="badge b-primary">${icon('shield')}Devam zorunlu</span>`;
   if (c.alis === 'Devamlı Alttan') return `<span class="badge b-warn">${icon('repeat')}Devamlı alttan</span>`;
   return `<span class="badge b-neutral" title="${repeatRule() === 'bolum' ? 'Bölüm kurulu kararıyla bu derste de devam zorunlu' : 'Yönetmelik md. 20: devam şartı aranmaz; ara sınav ve yarıyıl içi etkinliklere katılım zorunlu'}">${icon('repeat')}Alttan</span>`;
@@ -167,7 +168,8 @@ function viewToday() {
   const sevCount = { kritik: 0, dikkat: 0, dusuk: 0 };
   conflicts.forEach((c) => sevCount[c.sev]++);
 
-  const req = COURSES.filter(needsAttendance).map((c) => ({ c, st: attStatus(c) })).sort((a, b) => b.st.ratio - a.st.ratio);
+  const req = COURSES.filter((c) => needsAttendance(c) && hasSchedule(c)).map((c) => ({ c, st: attStatus(c) })).sort((a, b) => b.st.ratio - a.st.ratio);
+  const noSchedule = COURSES.filter((c) => !c.staj && !hasSchedule(c));
   const upcoming = state.tasks.filter((t) => !t.done).sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')).slice(0, 3);
   const need = requiredDno(state.settings.targetGno);
   const sim = projection(state.sim);
@@ -183,7 +185,7 @@ function viewToday() {
     <div class="dash-col">
       ${heroHtml()}
       <div class="stats">
-        <div class="card stat"><div class="k">Ders</div><div class="v">${COURSES.length}</div><div class="s">${COURSES.filter(needsAttendance).length} devam zorunlu</div></div>
+        <div class="card stat"><div class="k">Ders</div><div class="v">${GRADED.length}</div><div class="s">${COURSES.some((c) => c.staj) ? `+ staj · ` : ''}${GRADED.filter(needsAttendance).length} devam zorunlu</div></div>
         <div class="card stat"><div class="k">AKTS</div><div class="v">${SEM_AKTS}</div><div class="s">bu dönem</div></div>
         <div class="card stat"><div class="k">Kredi</div><div class="v">${COURSES.reduce((a, c) => a + c.krd, 0)}</div><div class="s">yerel kredi</div></div>
         <div class="card stat"><div class="k">Haftalık</div><div class="v">${COURSES.reduce((a, c) => a + c.tu, 0)} sa</div><div class="s">T+U toplamı</div></div>
@@ -213,6 +215,7 @@ function viewToday() {
             <div class="num">${st.abs} / ${st.lim} sa${st.lvl === 'danger' ? ` <span class="badge b-danger">Aşıldı</span>` : st.lvl === 'warn' ? ` <span class="badge b-warn">Sınırda</span>` : ''}</div>
             ${progressBar(st.lim ? (st.abs / st.lim) * 100 : 0, st.lvl)}
           </div>`).join('')}
+        ${noSchedule.length ? `<div class="help" style="margin-top:10px">${noSchedule.map((c) => esc(c.name)).join(', ')}: ders saati programda olmadığı için takip edilemiyor.</div>` : ''}
         <div class="help" style="margin-top:10px">Yoklamayı programdaki ✓ / ✕ düğmeleriyle işaretle. Yönetmelik md. 20: derslere en az %70, uygulamalara en az %80 devam; resmi tatiller hesaba katılmaz.</div>
       </section>
       ${studyOwners().length && !si.after ? (() => { const tw = thisWeekRows(4); return `<section class="card card-pad">
@@ -428,13 +431,17 @@ function courseCard(c, conflicts) {
   const ss = sessionsFor(c), st = attStatus(c), hist = historyOf(c), g = gradeCalc(c.code);
   const cf = conflictsOfCourse(c.code, conflicts);
   const worst = cf.some((x) => x.sev === 'kritik') ? 'b-danger' : cf.some((x) => x.sev === 'dikkat') ? 'b-warn' : 'b-neutral';
-  const att = needsAttendance(c)
+  const att = c.staj
+    ? `<div class="att"><div class="row"><span>Staj · devam ve sınav takibi yok</span><span>Y / YS ile değerlendirilir</span></div></div>`
+    : !hasSchedule(c)
+    ? `<div class="att"><div class="row"><span style="color:var(--warn)">Ders saati programda yok</span></div></div>`
+    : needsAttendance(c)
     ? `<div class="att"><div class="row"><span>Devamsızlık</span><b style="color:var(--text)">${st.abs} / ${st.lim} saat</b></div>${progressBar(st.lim ? (st.abs / st.lim) * 100 : 0, st.lvl)}</div>`
     : `<div class="att"><div class="row"><span>Devam şartı yok (md. 20)</span><span>${st.present + st.abs ? `${st.present} sa katıldın` : ''}</span></div></div>`;
   return `<article class="ccard c" style="${cstyle(c)}" data-act="open" data-code="${c.code}" role="button" tabindex="0" aria-label="${esc(c.name)} detayını aç">
     <div class="top"><span class="chip-code">${c.code}</span>${alisBadge(c)}${c.lab ? `<span class="badge b-neutral">${icon('flask')}Lab</span>` : ''}${cf.length ? `<span class="badge ${worst}">${icon('alert')}${cf.length}</span>` : ''}</div>
     <h3>${esc(c.name)}</h3>
-    <div class="teacher">${icon('user')}${esc(c.teacher)}</div>
+    ${c.staj ? '' : `<div class="teacher">${icon('user')}${c.teacher ? esc(c.teacher) : '<span class="muted">Öğretim elemanı programda belirtilmemiş</span>'}</div>`}
     <div class="sched">${ss.map((s) => `<div><b>${DAYS_SHORT[s.d]}</b><span class="mono">${timeRange(s)}</span><span>${esc(s.room)}</span></div>`).join('')}</div>
     ${att}
     <div class="hist">${hist.length ? `${hist.map((h) => `<span class="g ${gradeClass(h.grade)}" title="${esc(h.term)}">${h.grade}</span>`).join('')}<span class="muted" style="font-size:12px">· ${hist.length + 1}. deneme</span>` : `<span class="badge b-info">İlk kez alıyorsun</span>`}</div>
@@ -442,7 +449,7 @@ function courseCard(c, conflicts) {
       <div><div class="k">T+U</div><div class="v">${c.tu}</div></div>
       <div><div class="k">Kredi</div><div class="v">${c.krd}</div></div>
       <div><div class="k">AKTS</div><div class="v">${c.akts}</div></div>
-      <div><div class="k">Ort.</div><div class="v">${g.avg != null ? `${g.avg} <span class="g ${gradeClass(g.letter)}">${g.letter}</span>` : '—'}</div></div>
+      <div><div class="k">${c.staj ? 'Not' : 'Ort.'}</div><div class="v">${c.staj ? 'Y/YS' : g.avg != null ? `${g.avg.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} <span class="g ${gradeClass(g.letter)}">${g.letter}</span>` : '—'}</div></div>
     </div>
   </article>`;
 }
@@ -499,7 +506,7 @@ function drawerHtml(c) {
     <button type="button" class="icon-btn close" data-act="close" aria-label="Kapat">${icon('x')}</button>
     <div class="row wrap" style="gap:6px"><span class="chip-code">${c.code}${c.old ? ` [${c.old}]` : ''}</span>${alisBadge(c)}${c.lab ? `<span class="badge b-neutral">${icon('flask')}Laboratuvar</span>` : ''}<span class="badge b-neutral">${c.sinif}. sınıf</span></div>
     <h2 id="drawerTitle">${esc(c.name)}</h2>
-    <div class="row" style="gap:6px;color:var(--text-2);font-size:14px">${icon('user')}${esc(c.teacher)}</div>
+    ${c.staj ? '' : `<div class="row" style="gap:6px;color:var(--text-2);font-size:14px">${icon('user')}${c.teacher ? esc(c.teacher) : 'Öğretim elemanı programda belirtilmemiş'}</div>`}
   </header>
   <div class="dr-body">
     <div class="info-grid">
@@ -528,7 +535,13 @@ function drawerHtml(c) {
       ${evalChips(c) ? `<div style="margin-top:10px">${evalChips(c)}</div>` : ''}
     </section>` : ''}
 
-    <section class="card card-pad">
+    ${c.staj ? `<section class="card card-pad">
+      <div class="card-h"><h3 class="card-t">${icon('flag')}Staj bilgisi</h3></div>
+      ${c.study?.icerik ? `<p style="margin:0 0 8px">${esc(c.study.icerik)}</p>` : ''}
+      ${c.study?.amac ? `<p class="help" style="margin:0 0 8px"><b>Amaç:</b> ${esc(c.study.amac)}</p>` : ''}
+      <p class="help" style="margin:0">Yönetmelik md. 24: stajlar Y (yeterli) veya YS (yetersiz) ile değerlendirilir ve GNO'ya katılmaz; stajın 5 AKTS'si yarıyıl AKTS sınırının dışındadır (md. 16).${c.study?.not ? ` ${esc(c.study.not)}` : ''}</p>
+    </section>` : ''}
+    ${c.staj || !hasSchedule(c) ? '' : `<section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('shield')}Devamsızlık</h3>
         <span class="badge ${st.lvl === 'danger' ? 'b-danger' : st.lvl === 'warn' ? 'b-warn' : st.lvl === 'ok' ? 'b-ok' : 'b-neutral'}">${!needsAttendance(c) ? 'Takip isteğe bağlı' : st.lvl === 'danger' ? 'Sınır aşıldı' : `${Math.max(st.left, 0)} saat hakkın kaldı`}</span></div>
       <div class="row between" style="font-size:13.5px;margin-bottom:6px"><span>${st.abs} saat devamsız · ${st.present} saat katıldın</span><span class="muted">Sınır ${st.lim} sa (%${limitPct(c)})</span></div>
@@ -540,9 +553,9 @@ function drawerHtml(c) {
       ${c.devamNot ? `<p class="help" style="margin:0 0 10px">${esc(c.devamNot)}</p>` : ''}
       <div class="help" style="margin-bottom:10px">Hafta kutusuna dokun: boş → <span style="color:var(--ok);font-weight:700">katıldım</span> → <span style="color:var(--danger);font-weight:700">katılmadım</span> → boş.</div>
       <div class="att-grid">${weeks}</div>
-    </section>
+    </section>`}
 
-    <section class="card card-pad">
+    ${c.staj ? '' : `<section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('target')}Not hesaplama</h3><span class="help">${gp.official ? 'Bilgi paketindeki oranlar' : 'Varsayılan oranlar'}</span></div>
       <div class="grade-inputs">
         ${[...gp.parts, { key: 'but', label: 'Bütünleme', pct: null }].map((p) => `<div class="field"><label for="g-${p.key}">${esc(p.label)}${p.pct != null ? ` <span class="muted">%${p.pct}</span>` : ''}</label><input id="g-${p.key}" class="input" type="number" inputmode="numeric" min="0" max="100" placeholder="—" value="${esc(state.grades[c.code]?.[p.key] ?? '')}" data-input="grade" data-code="${c.code}" data-field="${p.key}"></div>`).join('')}
@@ -550,7 +563,7 @@ function drawerHtml(c) {
       ${gp.parts.some((p) => p.count > 1) ? '<p class="help" style="margin:8px 0 0">Birden fazla olan bileşenlerde ortalamasını gir.</p>' : ''}
       <p class="help" style="margin:8px 0 0">Finale girebilmek için ara sınava girmiş olman ve devam şartını sağlaman gerekir (yönetmelik md. 23). Bütünleme notu finalin yerine geçer; devamsızlıktan kalınan derste bütünlemeye girilemez (md. 21).</p>
       <div id="gradeOut" style="margin-top:12px">${gradeOutHtml(c)}</div>
-    </section>
+    </section>`}
 
     <section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('repeat')}Geçmiş denemeler</h3></div>
@@ -826,7 +839,7 @@ function viewAcademic() {
   const cond = conditionalPasses();
   const latest = latestMap();
   const delta = sim.count ? sim.gno - CURRENT.gno : null;
-  const simRows = COURSES.map((c) => {
+  const simRows = GRADED.map((c) => {
     const old = latest.get(c.old || c.code);
     const g = gradeCalc(c.code);
     return `<div class="sim-row c" style="${cstyle(c)}">
@@ -841,7 +854,7 @@ function viewAcademic() {
   return `
   <div class="kpis">
     <div class="card card-pad kpi"><div class="k">Mevcut GNO</div><div class="v">${fmt2(CURRENT.gno)}</div><div class="s">${CURRENT.akts} AKTS · transkript</div></div>
-    <div class="card card-pad kpi"><div class="k">Simülasyon GNO</div><div class="v" style="color:${sim.count ? 'var(--primary)' : 'var(--text-3)'}">${sim.count ? fmt2(sim.gno) : '—'}</div><div class="s">${sim.count ? `<span class="${delta >= 0 ? 'delta-up' : 'delta-down'}">${delta >= 0 ? '▲' : '▼'} ${fmt2(Math.abs(delta))}</span> · ${sim.count}/${COURSES.length} ders` : 'Aşağıdan not seç'}</div></div>
+    <div class="card card-pad kpi"><div class="k">Simülasyon GNO</div><div class="v" style="color:${sim.count ? 'var(--primary)' : 'var(--text-3)'}">${sim.count ? fmt2(sim.gno) : '—'}</div><div class="s">${sim.count ? `<span class="${delta >= 0 ? 'delta-up' : 'delta-down'}">${delta >= 0 ? '▲' : '▼'} ${fmt2(Math.abs(delta))}</span> · ${sim.count}/${GRADED.length} ders` : 'Aşağıdan not seç'}</div></div>
     <div class="card card-pad kpi"><div class="k">Dönem ortalaması (DNO)</div><div class="v">${sim.dno != null ? fmt2(sim.dno) : '—'}</div><div class="s">${SEM_AKTS} AKTS bu dönem</div></div>
     <div class="card card-pad kpi"><div class="k">${fmt2(target)} için gereken DNO</div><div class="v">${need > 4 ? '4,00+' : fmt2(Math.max(need, 0))}</div><div class="s">${need > 4 ? 'Bu dönem tek başına yetmez' : `≈ ortalama ${nearestLetter(need)}`}</div></div>
   </div>
@@ -872,9 +885,9 @@ function viewAcademic() {
           <input id="tgt" type="range" min="1.5" max="2.6" step="0.05" value="${target}" data-input="target">
         </div>
         <div class="callout ${need > 4 ? 'danger' : need > 3 ? 'warn' : 'info'}" style="margin-top:12px">${icon('target')}<div>
-          ${need > 4 ? `Bu hedef tek dönemde ulaşılabilir değil (gereken DNO ${fmt2(need)}). Bahar dönemiyle birlikte planla.` : `Bu dönemki ${COURSES.length} dersin ortalaması <b>${fmt2(Math.max(need, 0))}</b> olursa GNO'n <b>${fmt2(target)}</b> olur. Örneğin tüm dersler <b>${nearestLetter(need)}</b> ile geçilirse yeterli.`}
+          ${need > 4 ? `Bu hedef tek dönemde ulaşılabilir değil (gereken DNO ${fmt2(need)}). Bahar dönemiyle birlikte planla.` : `Bu dönemki ${GRADED.length} dersin (staj hariç) ortalaması <b>${fmt2(Math.max(need, 0))}</b> olursa GNO'n <b>${fmt2(target)}</b> olur. Örneğin tüm dersler <b>${nearestLetter(need)}</b> ile geçilirse yeterli.`}
         </div></div>
-        <div class="help" style="margin-top:10px">Tüm dersler CC → GNO ${fmt2(projection(Object.fromEntries(COURSES.map((c) => [c.code, 'CC']))).gno)} · CB → ${fmt2(projection(Object.fromEntries(COURSES.map((c) => [c.code, 'CB']))).gno)} · BB → ${fmt2(projection(Object.fromEntries(COURSES.map((c) => [c.code, 'BB']))).gno)}</div>
+        <div class="help" style="margin-top:10px">Tüm dersler CC → GNO ${fmt2(projection(Object.fromEntries(GRADED.map((c) => [c.code, 'CC']))).gno)} · CB → ${fmt2(projection(Object.fromEntries(GRADED.map((c) => [c.code, 'CB']))).gno)} · BB → ${fmt2(projection(Object.fromEntries(GRADED.map((c) => [c.code, 'BB']))).gno)}</div>
       </section>
       <section class="card card-pad">
         <div class="card-h"><h3 class="card-t">${icon('flag')}Bu dönem dışında kalan dersler</h3><span class="badge b-neutral">${debts.length}</span></div>

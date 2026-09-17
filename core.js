@@ -56,7 +56,10 @@ const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + 
 const courseByCode = Object.fromEntries(COURSES.map((c) => [c.code, c]));
 // Alttan derslerde devam: yönetmelik md. 20 istisna tanır; bölüm kurulu kararı tüm derslerde devamı zorunlu kılar
 const repeatRule = () => (state?.settings?.repeatAttendance === 'yonetmelik' ? 'yonetmelik' : 'bolum');
-const needsAttendance = (c) => (repeatRule() === 'bolum' ? true : c.alis !== 'Alttan');
+const isStaj = (c) => !!c?.staj;
+const needsAttendance = (c) => (isStaj(c) ? false : repeatRule() === 'bolum' ? true : c.alis !== 'Alttan');
+// GNO'ya girenler: stajlar Y/YS ile değerlendirilir, not ortalamasına katılmaz (yönetmelik md. 24)
+const GRADED = COURSES.filter((c) => !c.staj);
 const TAKVIM = window.TAKVIM || null;
 const KURALLAR = window.KURALLAR || {};
 const secKeys = (c) => Object.keys(c.sections);
@@ -320,7 +323,7 @@ function mergeRemote(remote) {
 /* ============ Program & çakışma motoru ============ */
 function sessionsFor(c, sec) {
   const key = sec ?? (state.sections?.[c.code] ?? secKeys(c)[0]);
-  return (c.sections[key] || c.sections[secKeys(c)[0]]).map((s) => ({ ...s, code: c.code, sec: key }));
+  return (c.sections[key] || c.sections[secKeys(c)[0]] || []).map((s) => ({ ...s, code: c.code, sec: key }));
 }
 function allSessions(secMap) {
   return COURSES.flatMap((c) => sessionsFor(c, secMap ? secMap[c.code] ?? secKeys(c)[0] : undefined));
@@ -563,7 +566,7 @@ function historyOf(c) {
 function projection(sim) {
   const m = latestMap();
   let semPts = 0, semAkts = 0, count = 0;
-  for (const c of COURSES) {
+  for (const c of GRADED) {
     const g = sim[c.code];
     if (!g) continue;
     m.delete(c.old || c.code);
@@ -576,10 +579,11 @@ function projection(sim) {
 // Bu dönemin dersleri hariç taban
 const BASE = (() => {
   const m = latestMap();
-  for (const c of COURSES) m.delete(c.old || c.code);
+  for (const c of GRADED) m.delete(c.old || c.code);
   return gpaOf(m);
 })();
-const SEM_AKTS = COURSES.reduce((s, c) => s + c.akts, 0);
+const SEM_AKTS = GRADED.reduce((s, c) => s + c.akts, 0);
+const hasSchedule = (c) => sessionsFor(c).length > 0;
 function requiredDno(target) {
   return (target * (BASE.akts + SEM_AKTS) - BASE.pts) / SEM_AKTS;
 }
