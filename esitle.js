@@ -60,6 +60,9 @@ const Sync = (() => {
   async function fileContent(f) {
     if (!f) return null;
     if (!f.truncated && typeof f.content === 'string') return f.content;
+    let host = '';
+    try { host = new URL(f.raw_url).host; } catch (e) { return null; }
+    if (host !== 'gist.githubusercontent.com') return null; // yalnızca GitHub'ın ham içerik alan adı
     const r = await fetch(f.raw_url, { cache: 'no-store' });
     return r.ok ? r.text() : null;
   }

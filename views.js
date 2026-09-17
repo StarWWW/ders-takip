@@ -294,7 +294,7 @@ function gridHtml(conflicts) {
       const cls = ['blk', 'c', practice ? 'lab' : '', needsAttendance(c) ? '' : 'opt', sev ? `conf-${sev}` : '', narrow ? 'narrow' : '', s.from === s.to ? 'short' : ''].join(' ');
       const label = `${c.name}${isMixed(c) ? ` (${KIND_LABEL[sessionKind(c, s)].toLocaleLowerCase('tr')})` : ''}, ${DAYS[d]} ${timeRange(s)}, ${s.room}${sev ? ', çakışma var' : ''}`;
       return `<button type="button" class="${cls}" style="${cstyle(c)};top:${yOf(it.a) + 1}px;height:${(it.b - it.a) * PPM - 2}px;left:calc(${it.lane * w}% + 3px);width:calc(${w}% - 6px)" data-act="open" data-code="${c.code}" aria-label="${esc(label)}" title="${esc(label)}">
-        <span class="b-code">${sev ? icon('alert') : ''}${c.code}${s.sec ? ` · ${s.sec}` : ''}</span>
+        <span class="b-code">${sev ? icon('alert') : ''}${esc(c.code)}${s.sec ? ` · ${esc(s.sec)}` : ''}</span>
         <span class="b-name">${esc(c.name)}</span>
         <span class="b-room">${esc(s.room)}</span>
       </button>`;
@@ -363,7 +363,8 @@ function agendaHtml(conflicts) {
 function attendanceRuleHtml(compact) {
   const k = KURALLAR.devamKarari;
   const date = k ? fmtDate(parseDate(k.tarih), { day: 'numeric', month: 'long', year: 'numeric' }) : '';
-  const link = k?.url ? ` <a href="${esc(k.url)}" target="_blank" rel="noopener noreferrer">Duyuru ${icon('external')}</a>` : '';
+  const kurulUrl = safeUrl(k?.url);
+  const link = kurulUrl ? ` <a href="${esc(kurulUrl)}" target="_blank" rel="noopener noreferrer">Duyuru ${icon('external')}</a>` : '';
   if (repeatRule() === 'bolum') {
     return `<div class="callout warn" style="margin-bottom:12px">${icon('shield')}<div><b>Tüm derslerde devam zorunlu kabul ediliyor.</b> ${k ? `Bölüm Kurulu ${date} tarihli kararıyla 2025–2026 Bahar döneminden itibaren bölümdeki derslerde devam zorunluluğu uyguluyor.` : ''}${k?.kapsamNotu ? ` ${esc(k.kapsamNotu)} Bu görünüm en katı durumu gösterir; Ayarlar'dan değiştirebilirsin.` : compact ? '' : ` ${esc(capFirst(ALTTAN.madde))} tekrar alınan derslerde devam şartı aramaz; kararın alttan dersleri kapsayıp kapsamadığını danışmanına teyit ettir.`}${link}</div></div>`;
   }
@@ -458,7 +459,7 @@ function courseCard(c, conflicts) {
     ${c.staj ? '' : `<div class="teacher">${icon('user')}${c.teacher ? esc(c.teacher) : '<span class="muted">Öğretim elemanı programda belirtilmemiş</span>'}</div>`}
     <div class="sched">${ss.map((s) => `<div><b>${DAYS_SHORT[s.d]}</b><span class="mono">${timeRange(s)}</span><span>${esc(s.room)}${isMixed(c) && sessionKind(c, s) === 'u' ? ' · uygulama' : ''}</span></div>`).join('')}</div>
     ${att}
-    <div class="hist">${hist.length ? `${hist.map((h) => `<span class="g ${gradeClass(h.grade)}" title="${esc(h.term)}">${h.grade}</span>`).join('')}<span class="muted" style="font-size:12px">· ${hist.length + 1}. deneme</span>` : `<span class="badge b-info">İlk kez alıyorsun</span>`}</div>
+    <div class="hist">${hist.length ? `${hist.map((h) => `<span class="g ${gradeClass(h.grade)}" title="${esc(h.term)}">${esc(h.grade)}</span>`).join('')}<span class="muted" style="font-size:12px">· ${hist.length + 1}. deneme</span>` : `<span class="badge b-info">İlk kez alıyorsun</span>`}</div>
     <div class="meta">
       <div><div class="k">T+U</div><div class="v">${esc(c.tuAyrinti || c.tu)}</div></div>
       <div><div class="k">Kredi</div><div class="v">${c.krd}</div></div>
@@ -589,7 +590,7 @@ function drawerHtml(c) {
 
     <section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('repeat')}Geçmiş denemeler</h3></div>
-      ${hist.length ? `<div class="timeline">${hist.map((h) => `<div class="row between" style="padding:7px 0;border-top:1px dashed var(--border)"><span style="font-size:14px">${esc(h.term)} <span class="mono muted">${h.code}</span></span><span class="g ${gradeClass(h.grade)}">${h.grade}</span></div>`).join('')}</div>
+      ${hist.length ? `<div class="timeline">${hist.map((h) => `<div class="row between" style="padding:7px 0;border-top:1px dashed var(--border)"><span style="font-size:14px">${esc(h.term)} <span class="mono muted">${esc(h.code)}</span></span><span class="g ${gradeClass(h.grade)}">${esc(h.grade)}</span></div>`).join('')}</div>
         <p class="help" style="margin:10px 0 0">Bu dönem ${hist.length + 1}. denemen. Yeni notun eski notun yerine geçer ve GNO'na doğrudan yansır.</p>` : `<div class="help">Bu dersi ilk kez alıyorsun.</div>`}
     </section>
 
@@ -629,7 +630,7 @@ function gradeOutHtml(c) {
 }
 
 /* ============ ÇALIŞMA ============ */
-const BOLOGNA_URL = (id) => (window.UNIVERSITE?.bologna ? `${window.UNIVERSITE.bologna}${encodeURIComponent(id)}` : '');
+const BOLOGNA_URL = (id) => (window.UNIVERSITE?.bologna ? safeUrl(`${window.UNIVERSITE.bologna}${encodeURIComponent(id)}`) : '');
 const UNI = () => window.UNIVERSITE?.kisaAd || '';
 if (!ui.studyOpen) ui.studyOpen = new Set();
 
@@ -921,15 +922,15 @@ function viewAcademic() {
         <div class="card-h"><h3 class="card-t">${icon('flag')}Bu dönem dışında kalan dersler</h3><span class="badge b-neutral">${debts.length}</span></div>
         ${['Güz', 'Bahar'].map((sem) => {
           const l = debts.filter((x) => { const y = curriculumTerm(x.code); return y ? (y % 2 === 1) === (sem === 'Güz') : false; });
-          return l.length ? `<div class="help" style="font-weight:700;margin:6px 0 4px">${sem} yarıyılı dersleri</div>${l.map((x) => `<div class="row between" style="padding:6px 0;border-top:1px dashed var(--border);font-size:14px"><span><span class="mono muted">${x.code}</span> ${esc(x.name)} <span class="muted" style="font-size:12px">· ${curriculumTerm(x.code)}. yarıyıl</span></span><span class="row" style="gap:6px"><span class="muted" style="font-size:12px">${x.akts} AKTS</span><span class="g ${gradeClass(x.grade)}">${x.grade}</span></span></div>`).join('')}` : '';
+          return l.length ? `<div class="help" style="font-weight:700;margin:6px 0 4px">${sem} yarıyılı dersleri</div>${l.map((x) => `<div class="row between" style="padding:6px 0;border-top:1px dashed var(--border);font-size:14px"><span><span class="mono muted">${esc(x.code)}</span> ${esc(x.name)} <span class="muted" style="font-size:12px">· ${curriculumTerm(x.code)}. yarıyıl</span></span><span class="row" style="gap:6px"><span class="muted" style="font-size:12px">${x.akts} AKTS</span><span class="g ${gradeClass(x.grade)}">${esc(x.grade)}</span></span></div>`).join('')}` : '';
         }).join('')}
-        ${debts.some((x) => !curriculumTerm(x.code)) ? `<div class="help" style="font-weight:700;margin:6px 0 4px">Yarıyılı bilinmeyen</div>${debts.filter((x) => !curriculumTerm(x.code)).map((x) => `<div class="row between" style="padding:6px 0;border-top:1px dashed var(--border);font-size:14px"><span><span class="mono muted">${x.code}</span> ${esc(x.name)}</span><span class="g ${gradeClass(x.grade)}">${x.grade}</span></div>`).join('')}` : ''}
+        ${debts.some((x) => !curriculumTerm(x.code)) ? `<div class="help" style="font-weight:700;margin:6px 0 4px">Yarıyılı bilinmeyen</div>${debts.filter((x) => !curriculumTerm(x.code)).map((x) => `<div class="row between" style="padding:6px 0;border-top:1px dashed var(--border);font-size:14px"><span><span class="mono muted">${esc(x.code)}</span> ${esc(x.name)}</span><span class="g ${gradeClass(x.grade)}">${esc(x.grade)}</span></div>`).join('')}` : ''}
         ${METIN.borc ? `<p class="help" style="margin:10px 0 0">${esc(METIN.borc)}</p>` : ''}
         ${debts.filter((x) => window.DERS_NOTLARI?.[x.code]).map((x) => `<p class="help" style="margin:6px 0 0"><b class="mono">${esc(x.code)}:</b> ${esc(window.DERS_NOTLARI[x.code])}</p>`).join('')}
       </section>
       <section class="card card-pad">
         <div class="card-h"><h3 class="card-t">${icon('info')}Şartlı geçilen dersler</h3><span class="badge b-warn">${cond.length}</span></div>
-        <div class="hist">${cond.map((x) => `<span class="badge b-neutral" title="${esc(x.name)}">${x.code} <span class="g g-cond">${x.grade}</span></span>`).join('')}</div>
+        <div class="hist">${cond.map((x) => `<span class="badge b-neutral" title="${esc(x.name)}">${esc(x.code)} <span class="g g-cond">${esc(x.grade)}</span></span>`).join('')}</div>
         ${METIN.sartli ? `<p class="help" style="margin:10px 0 0">${esc(METIN.sartli)}</p>` : ''}
       </section>
       <section>
@@ -937,7 +938,7 @@ function viewAcademic() {
         ${TRANSCRIPT.slice().reverse().map((t, i) => `<details class="term" ${i === 0 ? 'open' : ''}>
           <summary>${esc(t.term)}<span class="badge b-neutral">DNO ${fmt2(t.dno)}</span><span class="badge b-primary">GNO ${fmt2(t.gno)}</span>${icon('chevron', 'chev')}</summary>
           <div style="overflow-x:auto"><table><thead><tr><th>Kod</th><th>Ders</th><th class="r">AKTS</th><th class="r">Not</th></tr></thead><tbody>
-          ${t.courses.map(([code, name, akts, g]) => `<tr><td class="mono">${code}</td><td>${esc(name)}</td><td class="r">${akts}</td><td class="r"><span class="g ${gradeClass(g)}">${g}</span></td></tr>`).join('')}
+          ${t.courses.map(([code, name, akts, g]) => `<tr><td class="mono">${esc(code)}</td><td>${esc(name)}</td><td class="r">${akts}</td><td class="r"><span class="g ${gradeClass(g)}">${esc(g)}</span></td></tr>`).join('')}
           </tbody></table></div>
         </details>`).join('')}
       </section>
@@ -1101,7 +1102,7 @@ function viewSettings() {
     </section>
     ${(window.KAYNAKLAR || []).length ? `<section class="card card-pad" style="grid-column:1 / -1">
       <div class="card-h"><h3 class="card-t">${icon('info')}Bilgi kaynakları</h3></div>
-      <ul class="sources-list">${window.KAYNAKLAR.map((k) => `<li><div><b>${esc(k.ad)}</b>${k.url ? ` · <a href="${esc(k.url)}" target="_blank" rel="noopener noreferrer">Kaynağı aç ${icon('external')}</a>` : ''}</div><div class="help">${esc(k.detay)}${k.kontrol ? ` · Kontrol: ${fmtDate(parseDate(k.kontrol), { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}</div></li>`).join('')}</ul>
+      <ul class="sources-list">${window.KAYNAKLAR.map((k) => `<li><div><b>${esc(k.ad)}</b>${safeUrl(k.url) ? ` · <a href="${esc(safeUrl(k.url))}" target="_blank" rel="noopener noreferrer">Kaynağı aç ${icon('external')}</a>` : ''}</div><div class="help">${esc(k.detay)}${k.kontrol ? ` · Kontrol: ${fmtDate(parseDate(k.kontrol), { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}</div></li>`).join('')}</ul>
     </section>` : ''}
   </div>`;
 }

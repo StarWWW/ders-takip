@@ -273,7 +273,7 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'reset':
-      if (confirm('Tüm yoklama, not, görev ve ayarların silinecek. Emin misin?')) {
+      if (confirm(`Tüm yoklama, not, görev ve ayarların silinecek.${Sync.info.hasToken ? ' Eşitleme açık olduğu için diğer cihazlarındaki kayıtlar da silinir.' : ''} Emin misin?`)) {
         state = defaultState(); delete state.migrated; state.sections = { ...(OFFICIAL_SECTIONS ? { ...getOptimal(), ...OFFICIAL_SECTIONS } : getOptimal()) };
         if (OFFICIAL_SECTIONS) state.appliedDataSections = JSON.stringify(OFFICIAL_SECTIONS);
         save(); applyTheme(); refresh(); toast('Veriler sıfırlandı');

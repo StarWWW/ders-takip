@@ -115,13 +115,16 @@
           for (const acc of list[i].accounts) if (await keyFits(acc, keys[i])) { found = { acc, key: keys[i] }; break; }
         }
         if (!found) throw Object.assign(new Error('Şifre yanlış. Tekrar dene.'), { wrong: true });
+        let useKey = found.key;
         if (remember) {
           const raw = await crypto.subtle.exportKey('raw', found.key);
           try { localStorage.setItem(KEY_STORE, JSON.stringify({ hesap: found.acc.id, salt: found.acc.salt, k: b64e(raw) })); } catch (x) { /* depolama kapalı */ }
+          // Uygulama dışa aktarılamayan kopyayı kullansın (sayfadaki kod anahtarı okuyamaz)
+          useKey = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
         }
         pw.value = '';
         opened = true;
-        await openAccount(found.acc, found.key);
+        await openAccount(found.acc, useKey);
       } catch (x) {
         if (opened) { try { localStorage.removeItem(KEY_STORE); } catch (y) { /* yok say */ } }
         btn.disabled = false; btn.textContent = 'Kilidi aç';

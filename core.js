@@ -79,6 +79,8 @@ const COND_GRADES = KURALLAR.sartli || ['DC', 'DD'];
 const FINAL_MIN = Number(KURALLAR.finalBaraji) || 0;
 const PRACTICE_MIN = Number(KURALLAR.uygulamaBaraji) || 0;
 const ALTTAN = { madde: 'yönetmelik', baslik: 'Daha önce devamını sağladığın alttan derslerde devam şartı yok', yukumluluk: 'ara sınavlara katılman gerekir', ...(KURALLAR.alttan || {}) };
+// Veriden gelen bağlantılar yalnızca http(s) olabilir (javascript: gibi şemalar engellenir)
+const safeUrl = (u) => { if (!u) return ''; try { const x = new URL(String(u)); return ['http:', 'https:'].includes(x.protocol) ? x.href : ''; } catch (e) { return ''; } };
 const capFirst = (s) => (s ? s.charAt(0).toLocaleUpperCase('tr') + s.slice(1) : '');
 const maddeKisa = (s) => (String(s).match(/md\.\s*[\d/, –-]+/) || [s])[0].trim();
 
@@ -201,7 +203,7 @@ function sanitizeState(s) {
     for (const [code, m] of Object.entries(s.attendance)) {
       if (!courseByCode[code] || !isObj(m)) continue;
       const mm = {};
-      for (const [k, v] of Object.entries(m)) if (/^\d{1,2}\|[0-4]\|\d{1,2}\|\d{1,2}$/.test(k) && (v === 'var' || v === 'yok')) mm[k] = v;
+      for (const [k, v] of Object.entries(m).slice(0, 600)) if (/^\d{1,2}\|[0-4]\|\d{1,2}\|\d{1,2}$/.test(k) && (v === 'var' || v === 'yok')) mm[k] = v;
       out.attendance[code] = mm;
     }
   }
@@ -209,14 +211,14 @@ function sanitizeState(s) {
     for (const [code, g] of Object.entries(s.grades)) {
       if (!courseByCode[code] || !isObj(g)) continue;
       out.grades[code] = {};
-      for (const [f, v] of Object.entries(g)) if (GRADE_KEY_RE.test(f)) out.grades[code][f] = numOr(v, '', 0, 100);
+      for (const [f, v] of Object.entries(g).slice(0, 30)) if (GRADE_KEY_RE.test(f)) out.grades[code][f] = numOr(v, '', 0, 100);
     }
   }
   if (isObj(s.study)) {
     for (const [code, m] of Object.entries(s.study)) {
       if (!courseByCode[code] || !isObj(m)) continue;
       const mm = {};
-      for (const [w, v] of Object.entries(m)) {
+      for (const [w, v] of Object.entries(m).slice(0, 60)) {
         if (!/^\d{1,2}$/.test(w) || !isObj(v)) continue;
         const e = {};
         if (v.d) e.d = 1;
@@ -259,7 +261,10 @@ let saveOk = true;
  */
 const META_STORE = `${DEPO}.meta`;
 const SYNC_SETTINGS = ['start', 'weeks', 'midtermWeek', 'repeatAttendance', 'vizeW', 'theoryLimit', 'labLimit', 'scale', 'targetGno']; // tema cihaza özeldir
+// Nesne prototipini bozabilecek adlar eşitleme anahtarı olamaz (bozuk/kurcalanmış kayıt uygulamayı bozmasın)
+const UNSAFE_KEYS = ['__proto__', 'constructor', 'prototype'];
 const SYNC_KEY_RE = /^(att|grade|sim|note|limit|sec|set|task|study)~[^~]+(~[^~]+)?$/;
+const safeSyncKey = (k) => SYNC_KEY_RE.test(k) && !k.split('~').some((p) => UNSAFE_KEYS.includes(p));
 function flattenState(st) {
   const m = new Map();
   const put = (k, v) => { if (v === undefined || v === null || v === '') return; m.set(k, JSON.stringify(v)); };
@@ -275,13 +280,16 @@ function flattenState(st) {
   return m;
 }
 function applySyncValue(st, key, raw) {
+  if (!safeSyncKey(key)) return;
   const v = raw === undefined ? undefined : JSON.parse(raw);
   const [type, a, b] = key.split('~');
+  // Yalnızca nesnenin kendi alanlarına yaz (kalıtılan constructor vb. üzerinden yazmayı engeller)
+  const own = (obj, prop) => (Object.prototype.hasOwnProperty.call(obj, prop) ? obj[prop] : undefined);
   const setIn = (obj, prop, val) => { if (val === undefined) delete obj[prop]; else obj[prop] = val; };
   switch (type) {
-    case 'att': st.attendance[a] = st.attendance[a] || {}; setIn(st.attendance[a], b, v); break;
-    case 'grade': st.grades[a] = st.grades[a] || {}; st.grades[a][b] = v === undefined ? '' : v; break;
-    case 'study': st.study = st.study || {}; st.study[a] = st.study[a] || {}; setIn(st.study[a], b, v); break;
+    case 'att': st.attendance[a] = own(st.attendance, a) || {}; setIn(st.attendance[a], b, v); break;
+    case 'grade': st.grades[a] = own(st.grades, a) || {}; st.grades[a][b] = v === undefined ? '' : v; break;
+    case 'study': st.study = st.study || {}; st.study[a] = own(st.study, a) || {}; setIn(st.study[a], b, v); break;
     case 'sim': setIn(st.sim, a, v); break;
     case 'note': setIn(st.notes, a, v); break;
     case 'limit': setIn(st.limitOverride, a, v); break;
@@ -302,7 +310,7 @@ let syncMeta = {};
 let hadMetaStore = false;
 try {
   const raw = localStorage.getItem(META_STORE);
-  if (raw) { hadMetaStore = true; const m = JSON.parse(raw); if (isObj(m)) for (const [k, t] of Object.entries(m)) if (SYNC_KEY_RE.test(k) && Number(t) > 0) syncMeta[k] = Number(t); }
+  if (raw) { hadMetaStore = true; const m = JSON.parse(raw); if (isObj(m)) for (const [k, t] of Object.entries(m)) if (safeSyncKey(k) && Number(t) > 0) syncMeta[k] = Number(t); }
 } catch (e) { /* yok say */ }
 let baseFlat = flattenState(state);
 // Eşitleme gelmeden önce girilmiş kayıtlar: düşük zaman damgasıyla işaretle (uzaktaki gerçek değişikliklere yenilir, boş uzağa gönderilir)
@@ -340,7 +348,7 @@ function mergeRemote(remote) {
   const next = JSON.parse(JSON.stringify(state));
   let changedLocal = false, needPush = false;
   for (const k of new Set([...Object.keys(rMeta), ...Object.keys(syncMeta)])) {
-    if (!SYNC_KEY_RE.test(k)) continue;
+    if (!safeSyncKey(k)) continue;
     const lt = syncMeta[k] || 0, rt = Number(rMeta[k]) || 0;
     if (rt > lt) {
       try { applySyncValue(next, k, typeof rVals[k] === 'string' ? rVals[k] : undefined); } catch (e) { continue; }

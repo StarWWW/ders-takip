@@ -1,3 +1,13 @@
+// Başka bir sitenin içine çerçevelenmeyi engelle (tıklama hırsızlığına karşı)
+try {
+  if (window.top !== window.self) {
+    document.documentElement.innerHTML = '';
+    window.top.location = window.self.location.href;
+  }
+} catch (e) {
+  document.documentElement.innerHTML = '<p style="font-family:sans-serif;padding:24px">Bu sayfa başka bir sitenin içinde açılamaz.</p>';
+}
+
 // Tema, ilk boyamadan önce uygulanır (yanıp sönmeyi önler); bu cihazda en son açılan hesabın ayarı kullanılır
 try {
   var d = localStorage.getItem('dersTakip.aktif') || 'dersTakip';

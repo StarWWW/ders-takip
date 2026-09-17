@@ -125,6 +125,9 @@ def ask_new_password(name: str) -> str:
         if p1 != p2:
             print("  Şifreler aynı değil, tekrar dene.")
             continue
+        # Şifreli dosyalar herkese açık depoda durduğu için şifre gücü tek koruma
+        if len(p1) < 16 or " " not in p1 and "-" not in p1:
+            print("  Uyarı: kabul edildi ama kısa/tahmin edilebilir olabilir; 4-5 rastgele kelimeden oluşan bir parola daha güvenli.")
         return p1
 
 

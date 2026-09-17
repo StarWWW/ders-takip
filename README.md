@@ -9,6 +9,8 @@ Ders programı, devamsızlık, not ve GNO takip uygulaması. Tek sayfalık, bağ
 - Şifre çözme tamamen tarayıcıda (WebCrypto) yapılır; şifre hiçbir sunucuya gönderilmez.
 - Şifresiz kaynak veriler ve türetilmiş anahtarlar (`ozel/`) yalnızca yerel bilgisayarda durur ve `.gitignore` ile depodan hariç tutulur.
 - Yoklama, not, görev gibi kayıtlar tarayıcıda (localStorage) her hesap için ayrı önekle tutulur; **otomatik eşitleme** açıksa gizli bir GitHub Gist'e şifreli olarak gönderilir.
+- Ek sertleştirmeler: sayfa başka bir sitenin içine çerçevelenemez (tıklama hırsızlığı); veriden gelen bağlantılar yalnızca `http(s)` olabilir; "Bu cihazda açık kalsın" seçilince uygulama anahtarın dışa aktarılamaz kopyasını kullanır; eşitlemeden gelen anahtarlar `__proto__`/`constructor` gibi adları kabul etmez ve kayıt sayıları sınırlıdır.
+- Şifreli dosyalar herkese açık depoda durduğu için tek koruma şifrenin gücüdür: 4-5 rastgele kelimeden oluşan bir parola önerilir (anahtar türetme PBKDF2-SHA256, 600.000 tur).
 
 ## Cihazlar arası eşitleme
 
