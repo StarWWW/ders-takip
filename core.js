@@ -399,8 +399,10 @@ function conflictScore(secMap) {
   return findConflicts(secMap).reduce((sum, c) => sum + c.hours * SEV_WEIGHT[c.sev], 0);
 }
 // Tüm şube kombinasyonlarını dener, en az (ağırlıklı) çakışmayı bulur
+// Açıklanmış şubeler sabit tutulur; yalnızca belli olmayanlar için en az çakışmalı seçenek aranır
 function optimizeSections() {
   const multi = COURSES.filter(hasSections);
+  const options = (c) => (OFFICIAL_SECTIONS?.[c.code] ? [OFFICIAL_SECTIONS[c.code]] : secKeys(c));
   const base = Object.fromEntries(COURSES.map((c) => [c.code, secKeys(c)[0]]));
   let best = null, bestScore = Infinity;
   const rec = (i, cur) => {
@@ -409,7 +411,7 @@ function optimizeSections() {
       if (sc < bestScore) { bestScore = sc; best = { ...cur }; }
       return;
     }
-    for (const k of secKeys(multi[i])) { cur[multi[i].code] = k; rec(i + 1, cur); }
+    for (const k of options(multi[i])) { cur[multi[i].code] = k; rec(i + 1, cur); }
   };
   rec(0, { ...base });
   return best;
@@ -428,9 +430,12 @@ const OFFICIAL_SECTIONS = (() => {
   return Object.keys(m).length ? m : null;
 })();
 const SECTIONS_KNOWN = !!OFFICIAL_SECTIONS;
-if (OFFICIAL_SECTIONS && state.appliedDataSections !== JSON.stringify(OFFICIAL_SECTIONS)) {
-  state.sections = { ...getOptimal(), ...(state.sections || {}), ...OFFICIAL_SECTIONS };
-  state.appliedDataSections = JSON.stringify(OFFICIAL_SECTIONS);
+// "2:" öneki: şubeler, açıklanmış şubeleri sabit tutan öneriyle uygulandı (eski sürümün uyguladığı düzen bir kez yeniden hesaplanır)
+const SECTIONS_MARK = OFFICIAL_SECTIONS ? `2:${JSON.stringify(OFFICIAL_SECTIONS)}` : null;
+if (OFFICIAL_SECTIONS && state.appliedDataSections !== SECTIONS_MARK) {
+  // Yeni açıklanan şubelere göre belli olmayanların önerisi de yeniden hesaplanır
+  state.sections = { ...(state.sections || {}), ...getOptimal(), ...OFFICIAL_SECTIONS };
+  state.appliedDataSections = SECTIONS_MARK;
   save(); // bölümün açıkladığı şube: gerçek değişiklik olarak eşitlenir
 }
 if (!state.sections || COURSES.some((c) => hasSections(c) && !state.sections[c.code])) {

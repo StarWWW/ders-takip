@@ -433,7 +433,7 @@ function viewProgram() {
   ${agendaHtml(conflicts)}
   ${anySections ? `<h2 class="section-t">Şube seçimi</h2>
   ${SECTIONS_KNOWN
-    ? `<div class="callout ok" style="margin-bottom:12px">${icon('check')}<div>Şubelerin bölümün açıkladığı listeye göre ayarlandı. Değişiklik olursa aşağıdan güncelleyebilirsin.</div></div>`
+    ? `<div class="callout ok" style="margin-bottom:12px">${icon('check')}<div>Şubelerin bölümün açıkladığı listeye göre ayarlandı. Değişiklik olursa aşağıdan güncelleyebilirsin.${COURSES.filter((c) => hasSections(c) && !OFFICIAL_SECTIONS[c.code]).map((c) => ` <b>${esc(c.name)}</b>: grubun belli değil, şimdilik çakışmayı en aza indiren seçenek gösteriliyor (<span style="color:var(--primary)">●</span> önerilen).`).join('')}</div></div>`
     : `<div class="callout warn" style="margin-bottom:12px">${icon('info')}<div><b>Şubeler henüz açıklanmadı.</b> Şimdilik çakışmayı en aza indiren düzen gösteriliyor (<span style="color:var(--primary)">●</span> önerilen). Şuben açıklanınca buradan seçebilirsin; yoklama kayıtların kaybolmaz.</div></div>`}
   <div class="sec-panel">${secPanel}</div>` : ''}
   <h2 class="section-t">Çakışmalar ve öneriler</h2>
@@ -541,7 +541,7 @@ function drawerHtml(c) {
       <div class="info"><div class="k">AKTS</div><div class="v">${c.akts}</div></div>
       <div class="info span3"><div class="k">Ders saatleri</div>
         ${ss.map((s, i) => `<div class="v row wrap" style="gap:8px;margin-top:4px"><span>${DAYS[s.d]}</span><span class="mono">${timeRange(s)}</span><span class="muted" style="font-weight:600">${icon('pin')} ${esc(s.room)}</span>${isMixed(c) ? `<span class="badge ${sessionKind(c, s) === 'u' ? 'b-info' : 'b-neutral'}">${KIND_LABEL[sessionKind(c, s)]}</span>` : ''}</div>${s.hoca && s.hoca !== c.teacher && s.hoca !== ss[i + 1]?.hoca ? `<div class="help" style="margin:2px 0 4px">${esc(s.hoca)}</div>` : ''}`).join('')}
-        ${hasSections(c) ? `<div style="margin-top:10px" class="row wrap"><span class="k">Şube${SECTIONS_KNOWN ? '' : ' (henüz açıklanmadı)'}</span><div class="seg" role="group" aria-label="Şube">${secKeys(c).map((k) => `<button type="button" data-act="sec" data-code="${c.code}" data-sec="${k}" aria-pressed="${state.sections[c.code] === k}">${k}${getOptimal()[c.code] === k ? '<i class="rec" aria-label="önerilen"></i>' : ''}</button>`).join('')}</div></div>` : ''}
+        ${hasSections(c) ? `<div style="margin-top:10px" class="row wrap"><span class="k">Şube${!SECTIONS_KNOWN ? ' (henüz açıklanmadı)' : OFFICIAL_SECTIONS[c.code] ? '' : ' (grubun belli değil)'}</span><div class="seg" role="group" aria-label="Şube">${secKeys(c).map((k) => `<button type="button" data-act="sec" data-code="${c.code}" data-sec="${k}" aria-pressed="${state.sections[c.code] === k}">${k}${getOptimal()[c.code] === k ? '<i class="rec" aria-label="önerilen"></i>' : ''}</button>`).join('')}</div></div>` : ''}
       </div>
     </div>
     ${cf.map((x) => { const o = courseByCode[x.a.code === c.code ? x.b.code : x.a.code]; return `<div class="callout ${x.sev === 'kritik' ? 'danger' : x.sev === 'dikkat' ? 'warn' : 'info'}">${icon('alert')}<div><b>${DAYS[x.d]} ${SLOTS[x.from][0]}–${SLOTS[x.to][1]}</b> saatinde <b>${esc(o.name)}</b> ile çakışıyor. ${conflictAdvice(x)}</div></div>`; }).join('')}
