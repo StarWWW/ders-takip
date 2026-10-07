@@ -5,6 +5,9 @@ Kullanım:
     python araclar/sifrele.py ali                    # yalnızca bir hesap (anahtarı yoksa şifre sorar)
     python araclar/sifrele.py ali --yeni-sifre       # hesabın şifresini belirler ya da değiştirir
     python araclar/sifrele.py --yeni-hesap ali       # yeni hesap kaydı açar (ozel/ali/ klasörü ve rastgele kimlik)
+    python araclar/sifrele.py ali --yeni-sifre --yayinla   # şifreledikten sonra doğrulayıp GitHub'a gönderir
+
+Şifreledikten sonra ayrıca yayınlamak için: python araclar/yayinla.py
 
 Yerel (git'e yüklenmeyen) dosyalar:
     ozel/hesaplar.json          hesap adı → {"id": rastgele kimlik, "depo": (isteğe bağlı) tarayıcı depolama öneki}
@@ -197,6 +200,7 @@ def main() -> None:
     ap.add_argument("hesap", nargs="?", help="yalnızca bu hesabı işle (ör. ali)")
     ap.add_argument("--yeni-sifre", action="store_true", help="hesabın şifresini belirle ya da değiştir")
     ap.add_argument("--yeni-hesap", metavar="AD", help="yeni hesap kaydı oluştur")
+    ap.add_argument("--yayinla", action="store_true", help="şifreledikten sonra doğrulayıp commit et ve GitHub'a gönder")
     args = ap.parse_args()
 
     accounts = load_json(ACCOUNTS, {})
@@ -232,6 +236,12 @@ def main() -> None:
         encrypt_account(name, accounts[name], key)
 
     write_index(accounts)
+    if args.yayinla:
+        from yayinla import yayinla
+        print()
+        yayinla()
+    else:
+        print("Yayınlamak için: python araclar/yayinla.py")
 
 
 if __name__ == "__main__":

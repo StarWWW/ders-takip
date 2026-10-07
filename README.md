@@ -29,14 +29,19 @@ Ders programı, devamsızlık, not ve GNO takip uygulaması. Tek sayfalık, bağ
    python araclar/sifrele.py
    ```
    Tüm hesapları kayıtlı anahtarlarıyla şifreler ve `hesaplar.json`'u yeniler; içeriği değişmeyen dosyalara dokunmaz. Tek hesap için `python araclar/sifrele.py <hesap>`, şifre değiştirmek için `--yeni-sifre`.
-3. `veri/` ve `hesaplar.json` değişikliklerini commit edip push'la.
+3. Yayınla:
+   ```bash
+   python araclar/yayinla.py
+   ```
+   Her hesabın şifreli verisinin güncel olduğunu ve yalnızca kendi anahtarıyla açıldığını, `ozel/`'in depoda olmadığını kontrol eder; yalnızca `hesaplar.json` ve `veri/` dosyalarını (hesap adı içermeyen bir mesajla) commit edip GitHub'a gönderir ve sitenin güncellenmesini bekler. Önce yalnızca kontrol için `--deneme`, kendi mesajın için `-m "..."`.
+
+   Şifreleme ve yayınlama tek komutta: `python araclar/sifrele.py <hesap> --yeni-sifre --yayinla`
 
 ## Yeni kullanıcı ekleme
 
 1. `python araclar/sifrele.py --yeni-hesap <ad>` — rastgele kimlik ve `ozel/<ad>/` klasörü oluşturulur.
 2. Kullanıcının verisini `ozel/<ad>/veri.js` dosyasına koy (biçim için mevcut bir hesabın dosyasına bak: `universite.saatler`, `kurallar`, `takvim`, `courses`, `transcript`).
-3. Terminalde `python araclar/sifrele.py <ad> --yeni-sifre` çalıştırıp kullanıcının şifresini belirle (başka bir hesabın şifresiyle aynı olamaz).
-4. `veri/` ve `hesaplar.json` değişikliklerini commit edip push'la.
+3. Terminalde `python araclar/sifrele.py <ad> --yeni-sifre --yayinla` çalıştırıp kullanıcının şifresini belirle (başka bir hesabın şifresiyle aynı olamaz); şifreleme bitince doğrulanıp yayınlanır.
 
 Gereksinim: `python -m pip install cryptography`
 
