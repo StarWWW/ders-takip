@@ -23,7 +23,7 @@ Ders programı, devamsızlık, not ve GNO takip uygulaması. Tek sayfalık, bağ
 
 ## Veriyi güncelleme
 
-1. `ozel/<hesap>/veri.js` dosyasını düzenle (ör. şubeler açıklandığında `"sections": { "DERS101": "A", ... }`).
+1. `ozel/<hesap>/veri.js` dosyasını düzenle (ör. şubeler açıklandığında `"sections": { "DERS101": "A", ... }`; sınav programı açıklandığında derse `"sinavlar": [{ "tur": "vize", "tarih": "2026-11-02", "saat": "13:15", "yer": "EB 202" }]` — `tur`: `vize`, `final`, `but` ya da `mazeret`). Dönem içinde saati değişen oturuma `"yoklama": { "from": <eski>, "to": <eski> }` eklenirse eski saatle girilmiş yoklamalar korunur.
 2. Şifrele:
    ```bash
    python araclar/sifrele.py

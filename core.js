@@ -483,12 +483,15 @@ function conflictBudget(cf) {
 }
 
 /* ============ Devamsızlık ============ */
-const attKey = (w, s) => `${w}|${s.d}|${s.from}|${s.to}`;
+// Saati dönem içinde değişen oturum, eski saatiyle girilmiş yoklamaları korumak için eski anahtarını taşır (s.yoklama)
+const attKey = (w, s) => `${w}|${s.d}|${s.yoklama?.from ?? s.from}|${s.yoklama?.to ?? s.to}`;
 // Oturum türü: t = teorik ders, u = uygulama/laboratuvar (devamsızlık sınırları ayrı)
 const KIND_LABEL = { t: 'Teori', u: 'Uygulama' };
 const sessionKind = (c, s) => (s?.tur === 'u' || s?.tur === 't' ? s.tur : c?.lab ? 'u' : 't');
 function kindAt(c, d, from, to) {
-  for (const list of Object.values(c.sections)) for (const s of list) if (s.d === d && s.from === from && s.to === to) return sessionKind(c, s);
+  for (const list of Object.values(c.sections)) for (const s of list) {
+    if (s.d === d && ((s.from === from && s.to === to) || (s.yoklama?.from === from && s.yoklama?.to === to))) return sessionKind(c, s);
+  }
   return sessionKind(c, null);
 }
 function courseKinds(c) {
@@ -595,6 +598,19 @@ function gradeCalc(code) {
   return { official, parts, vals, v: vals.vize ?? null, f: vals.final ?? null, b, avg, letter, need, missing, finalLow, practiceLow, anyEntered: others.some((p) => vals[p.key] != null) };
 }
 
+/* ============ Sınav programı (bölümün ilanı, hesabın verisinden) ============ */
+const EXAM_LABEL = { vize: 'Vize', final: 'Final', but: 'Bütünleme', mazeret: 'Mazeret' };
+const EXAM_TASK_TYPE = { vize: 'Vize', final: 'Final' };
+const OFFICIAL_EXAMS = COURSES.flatMap((c) => (Array.isArray(c.sinavlar) ? c.sinavlar : [])
+  .filter((e) => e && ISO_DATE.test(e.tarih) && EXAM_LABEL[e.tur])
+  .map((e) => ({ ...e, code: c.code })))
+  .sort((a, b) => a.tarih.localeCompare(b.tarih) || (a.saat || '').localeCompare(b.saat || ''));
+const examsOf = (c, tur) => OFFICIAL_EXAMS.filter((e) => e.code === c.code && (!tur || e.tur === tur));
+const hasOfficialExams = (tur) => OFFICIAL_EXAMS.some((e) => e.tur === tur);
+// Aynı gün için Ajanda'ya aynı türde görev eklenmişse resmi kayıt ikinci kez listelenmez
+const examHasTask = (e) => state.tasks.some((t) => t.course === e.code && t.date === e.tarih && t.type === EXAM_TASK_TYPE[e.tur]);
+const upcomingExams = (date) => OFFICIAL_EXAMS.filter((e) => e.tarih >= isoDate(date) && !examHasTask(e));
+
 /* ============ Çalışma konuları ============ */
 const studyOwner = (c) => (c?.study?.ortak && courseByCode[c.study.ortak]) || c;
 const studyTopics = (c) => studyOwner(c)?.study?.haftalar || [];
@@ -612,6 +628,8 @@ function toggleStudy(code, w, field) {
 function vizeInfo(c) {
   const owner = studyOwner(c);
   const codes = new Set([c.code, owner.code, ...COURSES.filter((x) => x.study?.ortak === owner.code).map((x) => x.code)]);
+  const exam = OFFICIAL_EXAMS.find((e) => e.tur === 'vize' && codes.has(e.code));
+  if (exam) return { week: weekOf(parseDate(exam.tarih)), date: exam.tarih, source: 'program' };
   const task = state.tasks.filter((t) => t.type === 'Vize' && t.date && codes.has(t.course)).sort((a, b) => a.date.localeCompare(b.date))[0];
   if (task) return { week: weekOf(parseDate(task.date)), date: task.date, source: 'ajanda' };
   if (state.settings.midtermWeek) return { week: state.settings.midtermWeek, date: null, source: 'ayar' };

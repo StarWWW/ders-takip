@@ -27,6 +27,20 @@ function eventRow(e) {
     <span></span>
   </div>`;
 }
+const examTime = (e) => (Array.isArray(e.gruplar) && e.gruplar.length ? e.gruplar.map((g) => `${g.ad} ${g.saat}`).join(' · ') : e.saat || '');
+function examRow(e) {
+  const c = courseByCode[e.code], left = daysBetween(now(), parseDate(e.tarih));
+  const rel = left === 0 ? 'Bugün' : left === 1 ? 'Yarın' : `${left} gün sonra`;
+  return `<div class="task event">
+    <div class="ev-ic ev-sinav" aria-hidden="true">${icon('target')}</div>
+    <div style="min-width:0">
+      <div class="tt-title">${esc(c.name)}</div>
+      <div class="tt-meta"><span class="chip-code c" style="${cstyle(c)}">${c.code}</span><span class="badge b-info">${EXAM_LABEL[e.tur]}</span><span>${fmtDate(parseDate(e.tarih), { day: 'numeric', month: 'short', weekday: 'short' })}${examTime(e) ? ` · <span class="mono">${esc(examTime(e))}</span>` : ''}</span>${e.yer ? `<span>${icon('pin')} ${esc(e.yer)}</span>` : ''}<span class="badge ${left <= 3 ? 'b-warn' : 'b-neutral'}">${icon('clock')}${rel}</span></div>
+      ${e.not ? `<div class="help" style="margin-top:4px">${esc(e.not)}</div>` : ''}
+    </div>
+    <span></span>
+  </div>`;
+}
 function semInfo(n = now()) {
   const wk = weekOf(n), W = state.settings.weeks;
   return { wk, W, before: wk < 1, after: wk > W, inSem: wk >= 1 && wk <= W };
@@ -169,6 +183,7 @@ function viewToday() {
   const infeasible = budgets.filter((x) => !x.b.feasible);
   const regEvent = activeEvents(n, 'kayit')[0];
   const events = upcomingEvents(n, 45).filter((e) => e.tur !== 'donem' || e.bas >= isoDate(n)).slice(0, 3);
+  const exams = upcomingExams(n).filter((e) => daysBetween(n, parseDate(e.tarih)) <= 14);
 
   const sevCount = { kritik: 0, dikkat: 0, dusuk: 0 };
   conflicts.forEach((c) => sevCount[c.sev]++);
@@ -233,7 +248,9 @@ function viewToday() {
       <section class="card card-pad">
         <div class="card-h"><h3 class="card-t">${icon('tasks')}Yaklaşanlar</h3><a class="link-btn" href="#ajanda">${icon('plus')}Ekle</a></div>
         ${events.map(eventRow).join('')}
-        ${upcoming.length ? upcoming.map(taskRow).join('') : `<div class="empty" style="padding:14px">${icon('tasks')}<div>Vize tarihleri ilan edilince Ajanda'ya "Vize" olarak ekle.</div></div>`}
+        ${exams.slice(0, 4).map(examRow).join('')}
+        ${exams.length > 4 ? `<a class="link-btn" href="#ajanda" style="margin:2px 0 8px">${exams.length - 4} sınav daha ${icon('arrow')}</a>` : ''}
+        ${upcoming.length ? upcoming.map(taskRow).join('') : `<div class="empty" style="padding:14px">${icon('tasks')}<div>${hasOfficialExams('vize') ? 'Ödev ve proje teslimlerini Ajanda\'ya ekle; geri sayımı burada görürsün.' : 'Vize tarihleri ilan edilince Ajanda\'ya "Vize" olarak ekle.'}</div></div>`}
       </section>
       <section class="card card-pad">
         <div class="card-h"><h3 class="card-t">${icon('cap')}GNO hedefi</h3><a class="link-btn" href="#akademik">Simülatör ${icon('arrow')}</a></div>
@@ -446,6 +463,7 @@ function courseCard(c, conflicts) {
   const ss = sessionsFor(c), st = attStatus(c), hist = historyOf(c), g = gradeCalc(c.code);
   const cf = conflictsOfCourse(c.code, conflicts);
   const worst = cf.some((x) => x.sev === 'kritik') ? 'b-danger' : cf.some((x) => x.sev === 'dikkat') ? 'b-warn' : 'b-neutral';
+  const nextExam = examsOf(c).find((e) => e.tarih >= isoDate(now()));
   const att = c.staj
     ? `<div class="att"><div class="row"><span>Staj · devam ve sınav takibi yok</span><span>Y / YS ile değerlendirilir</span></div></div>`
     : !hasSchedule(c)
@@ -454,7 +472,7 @@ function courseCard(c, conflicts) {
     ? `<div class="att">${st.parts.map((p) => `<div class="row"><span>Devamsızlık${st.mixed ? ` · ${p.label.toLocaleLowerCase('tr')}` : ''}</span><b style="color:var(--text)">${p.abs} / ${p.lim} saat</b></div>${progressBar(p.lim ? (p.abs / p.lim) * 100 : p.abs ? 100 : 0, p.lvl)}`).join('')}</div>`
     : `<div class="att"><div class="row"><span>Devam şartı yok (${esc(maddeKisa(ALTTAN.madde))})</span><span>${st.present + st.abs ? `${st.present} sa katıldın` : ''}</span></div></div>`;
   return `<article class="ccard c" style="${cstyle(c)}" data-act="open" data-code="${c.code}" role="button" tabindex="0" aria-label="${esc(c.name)} detayını aç">
-    <div class="top"><span class="chip-code">${c.code}</span>${alisBadge(c)}${hasPractice(c) ? `<span class="badge b-neutral">${icon('flask')}${c.lab ? 'Lab' : 'Uygulama'}</span>` : ''}${cf.length ? `<span class="badge ${worst}">${icon('alert')}${cf.length}</span>` : ''}</div>
+    <div class="top"><span class="chip-code">${c.code}</span>${alisBadge(c)}${hasPractice(c) ? `<span class="badge b-neutral">${icon('flask')}${c.lab ? 'Lab' : 'Uygulama'}</span>` : ''}${cf.length ? `<span class="badge ${worst}">${icon('alert')}${cf.length}</span>` : ''}${nextExam ? `<span class="badge b-info">${icon('target')}${EXAM_LABEL[nextExam.tur]} ${fmtDate(parseDate(nextExam.tarih), { day: 'numeric', month: 'short' })}</span>` : ''}</div>
     <h3>${esc(c.name)}</h3>
     ${c.staj ? '' : `<div class="teacher">${icon('user')}${c.teacher ? esc(c.teacher) : '<span class="muted">Öğretim elemanı programda belirtilmemiş</span>'}</div>`}
     <div class="sched">${ss.map((s) => `<div><b>${DAYS_SHORT[s.d]}</b><span class="mono">${timeRange(s)}</span><span>${esc(s.room)}${isMixed(c) && sessionKind(c, s) === 'u' ? ' · uygulama' : ''}</span></div>`).join('')}</div>
@@ -501,6 +519,7 @@ function drawerHtml(c) {
   const curWk = clamp(weekOf(now()), 1, W);
   const curTopic = topics.find((h) => h.h === curWk);
   const vStats = topics.length ? studyStats(c, 'vize') : null, aStats = topics.length ? studyStats(c, 'tum') : null;
+  const exams = examsOf(c);
 
   const weeks = ss.map((s) => {
     const cells = Array.from({ length: W }, (_, i) => i + 1).map((w) => {
@@ -543,6 +562,9 @@ function drawerHtml(c) {
         ${ss.map((s, i) => `<div class="v row wrap" style="gap:8px;margin-top:4px"><span>${DAYS[s.d]}</span><span class="mono">${timeRange(s)}</span><span class="muted" style="font-weight:600">${icon('pin')} ${esc(s.room)}</span>${isMixed(c) ? `<span class="badge ${sessionKind(c, s) === 'u' ? 'b-info' : 'b-neutral'}">${KIND_LABEL[sessionKind(c, s)]}</span>` : ''}</div>${s.hoca && s.hoca !== c.teacher && s.hoca !== ss[i + 1]?.hoca ? `<div class="help" style="margin:2px 0 4px">${esc(s.hoca)}</div>` : ''}`).join('')}
         ${hasSections(c) ? `<div style="margin-top:10px" class="row wrap"><span class="k">Şube${!SECTIONS_KNOWN ? ' (henüz açıklanmadı)' : OFFICIAL_SECTIONS[c.code] ? '' : ' (grubun belli değil)'}</span><div class="seg" role="group" aria-label="Şube">${secKeys(c).map((k) => `<button type="button" data-act="sec" data-code="${c.code}" data-sec="${k}" aria-pressed="${state.sections[c.code] === k}">${k}${getOptimal()[c.code] === k ? '<i class="rec" aria-label="önerilen"></i>' : ''}</button>`).join('')}</div></div>` : ''}
       </div>
+      ${exams.length ? `<div class="info span3"><div class="k">Sınavlar</div>
+        ${exams.map((e) => `<div class="v row wrap" style="gap:8px;margin-top:4px"><span class="badge b-info">${EXAM_LABEL[e.tur]}</span><span>${fmtDate(parseDate(e.tarih), { weekday: 'long', day: 'numeric', month: 'long' })}</span>${examTime(e) ? `<span class="mono">${esc(examTime(e))}</span>` : ''}${e.yer ? `<span class="muted" style="font-weight:600">${icon('pin')} ${esc(e.yer)}</span>` : ''}</div>${e.not ? `<div class="help" style="margin:2px 0 4px">${esc(e.not)}</div>` : ''}`).join('')}
+      </div>` : !c.staj && hasOfficialExams('vize') ? `<div class="info span3"><div class="k">Sınavlar</div><div class="help" style="margin-top:4px">Bölümün ara sınav programında bu dersin sınavı yok; nasıl değerlendirileceğini hocana sor.</div></div>` : ''}
     </div>
     ${cf.map((x) => { const o = courseByCode[x.a.code === c.code ? x.b.code : x.a.code]; return `<div class="callout ${x.sev === 'kritik' ? 'danger' : x.sev === 'dikkat' ? 'warn' : 'info'}">${icon('alert')}<div><b>${DAYS[x.d]} ${SLOTS[x.from][0]}–${SLOTS[x.to][1]}</b> saatinde <b>${esc(o.name)}</b> ile çakışıyor. ${conflictAdvice(x)}</div></div>`; }).join('')}
     ${c.uyari ? `<div class="callout warn">${icon('pin')}<div>${esc(c.uyari)}</div></div>` : ''}
@@ -739,7 +761,8 @@ function viewStudy() {
   const si = semInfo();
   const owners = studyOwners();
   const vizeKnown = owners.filter((c) => vizeInfo(c)).length;
-  const vizeDated = owners.filter((c) => vizeInfo(c)?.source === 'ajanda').length;
+  const vizeDated = owners.filter((c) => vizeInfo(c)?.date).length;
+  const officialVize = hasOfficialExams('vize');
   if (!owners.length) {
     return `${studyTabsHtml('calisma')}<div class="card empty" style="margin-top:16px;padding:40px">${icon('bookOpen')}<div>Ders konuları bulunamadı.</div></div>`;
   }
@@ -758,9 +781,9 @@ function viewStudy() {
       <div class="row wrap" style="gap:6px;margin-top:12px">
         ${agg.behind && scope !== 'tekrar' ? `<span class="badge b-warn">${agg.behind} konu geride</span>` : ''}
         ${agg.review ? `<span class="badge b-neutral">${icon('bookmark')}${agg.review} tekrar bekliyor</span>` : ''}
-        ${vizeDated || !state.settings.midtermWeek ? `<span class="badge ${vizeDated ? 'b-info' : 'b-neutral'}">Vize tarihi girilen ders: ${vizeDated}/${owners.length}</span>` : ''}${state.settings.midtermWeek && vizeDated < owners.length ? `<span class="badge b-neutral">Ortak vize haftası: ${state.settings.midtermWeek}. hafta</span>` : ''}
+        ${vizeDated || !state.settings.midtermWeek ? `<span class="badge ${vizeDated ? 'b-info' : 'b-neutral'}">Vize tarihi ${officialVize ? 'belli olan' : 'girilen'} ders: ${vizeDated}/${owners.length}</span>` : ''}${state.settings.midtermWeek && vizeDated < owners.length ? `<span class="badge b-neutral">Ortak vize haftası: ${state.settings.midtermWeek}. hafta</span>` : ''}
       </div>
-      <p class="help" style="margin:12px 0 0">"Geride": derste işlenmiş ama henüz çalıştım olarak işaretlemediğin konular. ${esc(TAKVIM?.araSinavNotu || '')} İlan edilince Ajanda'ya dersin vizesini "Vize" türüyle ekle; o dersin vize konuları tarihe göre ayarlanır.</p>
+      <p class="help" style="margin:12px 0 0">"Geride": derste işlenmiş ama henüz çalıştım olarak işaretlemediğin konular. ${esc(TAKVIM?.araSinavNotu || '')} ${officialVize ? 'Her dersin vize konuları kendi sınav tarihine göre ayarlanır.' : 'İlan edilince Ajanda\'ya dersin vizesini "Vize" türüyle ekle; o dersin vize konuları tarihe göre ayarlanır.'}</p>
     </section>
     ${si.after ? '' : `<section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('calendar')}Bu haftanın konuları</h3><span class="badge ${tw.allDone ? 'b-ok' : 'b-neutral'}">${tw.done}/${tw.total}</span></div>
@@ -808,6 +831,7 @@ function viewTasks() {
   ];
   const done = state.tasks.filter((t) => t.done);
   const calEvents = calendarEvents().filter((e) => e.bit >= isoDate(n));
+  const exams = upcomingExams(n);
   return `
   ${studyTabsHtml('ajanda')}
   <section class="card card-pad" style="margin-top:16px">
@@ -819,10 +843,11 @@ function viewTasks() {
       <button class="btn btn-primary" type="submit" style="min-height:42px">${icon('plus')}Ekle</button>
     </form>
   </section>
-  ${state.tasks.length === 0 ? `<div class="card empty" style="margin-top:16px;padding:40px">${icon('tasks')}<div style="font-weight:700;color:var(--text);margin-bottom:4px">Ajandan boş</div><div>Vize tarihlerini, ödevleri ve proje teslimlerini ekle; Bugün ekranında geri sayımı görürsün.</div></div>` : ''}
+  ${state.tasks.length === 0 ? `<div class="card empty" style="margin-top:16px;padding:40px">${icon('tasks')}<div style="font-weight:700;color:var(--text);margin-bottom:4px">Ajandan boş</div><div>${hasOfficialExams('vize') ? 'Ödevleri' : 'Vize tarihlerini, ödevleri'} ve proje teslimlerini ekle; Bugün ekranında geri sayımı görürsün.</div></div>` : ''}
   ${groups.filter(([, l]) => l.length).map(([t, l]) => `<div class="task-group"><h3>${t}<span class="badge ${t === 'Gecikmiş' ? 'b-danger' : 'b-neutral'}">${l.length}</span></h3>${l.map(taskRow).join('')}</div>`).join('')}
+  ${exams.length ? `<div class="task-group"><h3>Sınav programı<span class="badge b-neutral">${exams.length}</span></h3>${exams.map(examRow).join('')}<p class="help">${esc(TAKVIM?.araSinavNotu || '')}</p></div>` : ''}
   ${done.length ? `<details class="task-group"><summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Tamamlanan (${done.length})</summary>${done.map(taskRow).join('')}</details>` : ''}
-  ${calEvents.length ? `<div class="task-group"><h3>Akademik takvim<span class="badge b-neutral">${calEvents.length}</span></h3>${calEvents.map(eventRow).join('')}<p class="help">${esc(TAKVIM?.araSinavNotu || '')}</p></div>` : ''}`;
+  ${calEvents.length ? `<div class="task-group"><h3>Akademik takvim<span class="badge b-neutral">${calEvents.length}</span></h3>${calEvents.map(eventRow).join('')}${exams.length ? '' : `<p class="help">${esc(TAKVIM?.araSinavNotu || '')}</p>`}</div>` : ''}`;
 }
 
 /* ============ AKADEMİK ============ */
@@ -1061,7 +1086,7 @@ function viewSettings() {
         <div class="field"><label for="sWeeks">Hafta sayısı</label><input id="sWeeks" class="input" type="number" min="1" max="20" value="${s.weeks}" data-input="setting" data-key="weeks" data-num></div>
         <div class="field"><label for="sMid">Ortak vize haftası (isteğe bağlı)</label><input id="sMid" class="input" type="number" min="2" max="20" placeholder="İlan edilmedi" value="${s.midtermWeek ?? ''}" data-input="setting" data-key="midtermWeek" data-num data-optional></div>
       </div>
-      <p class="help" style="margin:10px 0 0">${TAKVIM ? `Akademik takvime göre güz eğitimi ${fmtDate(parseDate(TAKVIM.baslangic), { day: 'numeric', month: 'long' })} – ${fmtDate(parseDate(TAKVIM.bitis), { day: 'numeric', month: 'long', year: 'numeric' })} (${TAKVIM.hafta} hafta). ` : ''}${esc(TAKVIM?.araSinavNotu || '')} Derslere özel vize tarihlerini Ajanda'dan "Vize" türüyle eklemen daha doğru olur.</p>
+      <p class="help" style="margin:10px 0 0">${TAKVIM ? `Akademik takvime göre güz eğitimi ${fmtDate(parseDate(TAKVIM.baslangic), { day: 'numeric', month: 'long' })} – ${fmtDate(parseDate(TAKVIM.bitis), { day: 'numeric', month: 'long', year: 'numeric' })} (${TAKVIM.hafta} hafta). ` : ''}${esc(TAKVIM?.araSinavNotu || '')}${hasOfficialExams('vize') ? '' : ' Derslere özel vize tarihlerini Ajanda\'dan "Vize" türüyle eklemen daha doğru olur.'}</p>
     </section>
     <section class="card card-pad">
       <div class="card-h"><h3 class="card-t">${icon('shield')}Devamsızlık sınırları</h3></div>

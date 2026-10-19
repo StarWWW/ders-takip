@@ -148,7 +148,10 @@ function attToast(c, s, auto) {
   toast(p.abs > p.lim ? `${name}: devamsızlık sınırı aşıldı!${extra}` : `${name}: ${p.lim - p.abs} saat hakkın kaldı${extra}`);
 }
 function attArgs(el) {
-  return { code: el.dataset.code, w: Number(el.dataset.w), s: { d: Number(el.dataset.d), from: Number(el.dataset.from), to: Number(el.dataset.to) } };
+  const code = el.dataset.code, d = Number(el.dataset.d), from = Number(el.dataset.from), to = Number(el.dataset.to);
+  // Verideki oturumun kendisi (saati değişmiş oturumun eski yoklama anahtarı onda)
+  const s = Object.values(courseByCode[code]?.sections || {}).flat().find((x) => x.d === d && x.from === from && x.to === to) || { d, from, to };
+  return { code, w: Number(el.dataset.w), s };
 }
 
 document.addEventListener('click', (e) => {
