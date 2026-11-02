@@ -33,12 +33,12 @@ const Px = (() => {
     '......pppPPP......',
     '.....hhhhhhhh.....',
     '...hhllhhhhhhhh...',
-    '..hlhhhhhhhhhhhh..',
-    '.hhhhhhhhhhhhhhhh.',
-    '.hhhhhhhhhhhhhhhh.',
-    '.hhhhsBBssBBshhhh.',
-    '.hhyhsiessieshyhh.',
-    '.hhyhseesseeshyhh.',
+    '..hlhhhhhyyhhhhh..',
+    '.hhhhhhhhhhyhhhhh.',
+    '.hyhhhhhhhhhyhhhh.',
+    '.yhhhsBBssBBshhhh.',
+    '.yhyhsiessieshyhh.',
+    '.yhyhseesseeshyhh.',
     '.hhyhcmssssmchyhh.',
     '.hhyEsssMMsssEyhh.',
     '.hyhhhsssssshhhyh.',
@@ -56,8 +56,8 @@ const Px = (() => {
     '....kkkk..kkkk....',
   ];
   const ELA_BLINK = withRows(ELA, {
-    11: '.hhyhsssssssshyhh.',
-    12: '.hhyhseesseeshyhh.',
+    11: '.yhyhsssssssshyhh.',
+    12: '.yhyhseesseeshyhh.',
   });
   const ELA_WALK = withRows(ELA, {
     25: '....jjj....jjj....',
