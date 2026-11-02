@@ -302,7 +302,7 @@
     'Mrrr... 😽',
     'Miyav miyav! (Bana da pasta var mı?)',
     '*mırlar*',
-    'Miyav. (Kafamı kaşı lütfen.)',
+    'Miyav. (gobeemi kaşı lütfen.)',
     'Mrrrao! 🐾',
   ];
   function petCat(k) {

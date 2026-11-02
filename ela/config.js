@@ -39,7 +39,7 @@ window.ELA = {
       dogru: 0,
     },
     {
-      soru: 'hangisi rengi daha az seviyon?',
+      soru: 'hangi rengi daha az seviyon?',
       secenekler: ['kirmizi', 'yeşil', 'pembe', 'kahverengi'],
       dogru: 2,
     },
