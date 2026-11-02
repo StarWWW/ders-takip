@@ -92,7 +92,7 @@ window.ELA = {
      odak: fotoğraf kare kırpılırken nereye odaklansın (0 = üst, 0.5 = orta, 1 = alt)
      ------------------------------------------------------------------- */
   anilar: [
-    { foto: 'foto/kedi.jpg', odak: 0.35, not: 'kedi + sen = dünyanın en guzek ikinci çifti. 🐱' },
+    { foto: 'foto/kedi.jpg', odak: 0.35, not: 'kedi + sen = dünyanın en guzek ikinci çifti.' },
     { foto: 'foto/balon.jpg', odak: 0.5, not: 'bugün cok güzeldiii susiciye gidek bi ara yine' },
     { foto: 'foto/zambak.jpg', odak: 0.45, not: 'cicekler sana çok yakışıyor. 🌸' },
   ],

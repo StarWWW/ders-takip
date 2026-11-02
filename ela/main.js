@@ -1104,7 +1104,7 @@
     async finish() {
       $('#quiz .quiz-panel').hidden = true;
       const n = C.quiz.length, f = this.firstTry;
-      const title = f === n ? 'EFSANE! Hepsini ilk denemede bildin! 🏆' : f >= n * 0.6 ? `${n} sorudan ${f} tanesini ilk denemede bildin. Ela Uzmanı unvanı senin! 🎓` : `${n} sorudan ${f} tanesini ilk denemede bildin. Kendini keşfetmeye devam! 😹`;
+      const title = f === n ? 'EFSANE! Hepsini ilk denemede bildin! 🏆' : f >= n * 0.6 ? `${n} sorudan ${f} tanesini ilk denemede bildin. Ela Uzmanı unvanı senin! 🎓` : `${n} sorudan ${f} tanesini ilk denemede bildin. bilerek yaptin dimi! 😹`;
       await Dialog.say([{ who: 'pati', text: title }, { who: 'pati', text: 'İşte ilk anı kartın! ✨' }]);
       completeLevel(0);
     },
