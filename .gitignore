@@ -9,3 +9,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Ela sitesi: orijinal fotoğraflar (sitede küçültülmüş kopyaları ela/foto/ içinde)
+ela/photos/
